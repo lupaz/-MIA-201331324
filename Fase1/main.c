@@ -37,7 +37,7 @@ int preanalisis=0;
 //=============== variables de parametros =================
 int size=0;
 char path[50];
-char name[50];
+char name[25];
 char unidad[2];
 int error=0;
 //================variables banderas ======================
@@ -78,6 +78,10 @@ void splitPath(char cadena[]);
 
 void imprimirRutas();
 
+void crearDisco();
+
+int comprobarExtencion(char nombre[]);
+
 //=========== metodos sintacticos =============
 void avanzarToken();
 void origen();
@@ -91,7 +95,7 @@ int main(){
     cargarPalabrasReservadas();
     int salida=0;
 
-    do{
+    /*do{
         printf("Adminitrador:>> ");
         leeConsola(linea,VAL);
         analisisLexico(linea);
@@ -100,7 +104,6 @@ int main(){
             leeConsola(linea,VAL);
             analisisLexico(linea);
         }
-
         if(cabezaT != NULL){
             tokenActual=cabezaT->token;
             tokActual=cabezaT;
@@ -114,7 +117,6 @@ int main(){
     }while(salida!=1);//*/
 
     return 0;
-
 
 }
 
@@ -584,7 +586,7 @@ void QuitarComillas(char cad[]){
 }
 
 void crearCarpeta(char ruta[]){ //recibe la rutas ya sin comillas
-    char comando[50]="sudo mkdir ";
+    char comando[50]="mkdir ";
     strcat(comando,ruta);
     system(comando);
 }
@@ -672,8 +674,54 @@ int existeCarpeta(char ruta[]){
     }
 }
 
-//========================Archivos sdk==========================
+//========================Archivos dsk==========================
 
+void crearDisco(){
+    if(comprobarExtencion(name)==1){
+        crearDirectorios(path);
+        char rutaFinal[75];
+        char espacio='\0';
+        QuitarComillas(path);
+        QuitarComillas(name);
+        if(path[(strlen(path)-1)]!='/'){
+            strcpy(rutaFinal,path);
+            strcat(rutaFinal,"/");
+            strcat(rutaFinal,name);
+        }else{
+            strcpy(rutaFinal,path);
+            strcat(rutaFinal,name);
+        }
+
+        FILE *nuevo;
+        nuevo=fopen(rutaFinal,"wb");
+        //printf("dimen: %i \n",tamano);
+        if(nuevo!=NULL){
+            fseek(nuevo,tamano,SEEK_SET);
+            fwrite(&espacio,sizeof(espacio),1,nuevo);
+            printf("AVISO: Disco \"%s\" creado Correctamente.\n",name);
+        }else{
+            printf("AVISO: No se pudo crear el disco.(ER=IO)\n");
+        }
+
+    }else{
+        printf("ERROR: La extension del disco no es valida.\n");
+        printf("AVISO: No se pudo crear el disco.\n");
+    }
+
+}
+
+int comprobarExtencion(char nombre[]){
+    char *val;
+    char extension[]=".dsk";
+    val=strstr(nombre,extension);
+
+    if(val==NULL){
+        return 0;
+    }else{
+        return 1;
+    }
+
+}
 
 
 //=============================================================================Metodos de analisis sintactico===========================================================================================
@@ -700,9 +748,9 @@ void origen(){ //inicio del analisis sintactico y validaciones
                 avanzarToken();
                 COM1();
                 if(error==0){ // aca pienso hacer las validaciones y la creacion de los archs
-                    if(Buni=1){
-                            if(unidad=="m"|| unidad=="M" || unidad=="k"||unidad=="K"){
-                                if (unidad=="m"|| unidad=="M"){
+                    if(Buni==1){
+                            if( (strcasecmp(unidad,"M")==0) || (strcasecmp(unidad,"K")==0)){
+                                if (strcasecmp(unidad,"M")==0){
                                     tamano=1024*1024*size;
                                 }else{
                                     tamano=1024*size;
@@ -711,9 +759,10 @@ void origen(){ //inicio del analisis sintactico y validaciones
                                  tamano=1024*1024*size;
                                  printf("ERROR: El parametro de unit no es valido.\n");
                             }
-                        }else{
+                    }else{
                             tamano=1024*1024*size;
-                        }
+                    }
+
                     if(Bpath==0 || Bsize==0 || Bname==0){
                         if(Bpath==0){
                             printf("ERROR: Falta el parametro Path.\n");
@@ -722,14 +771,12 @@ void origen(){ //inicio del analisis sintactico y validaciones
                         }else{
                             printf("ERROR: Falta el parametro Size.\n");
                         }
-                        printf("AVISO: No se puede crear el disco.\n");
+                        printf("AVISO: No se pudo crear el disco.\n");
                     }else{
-
-                        printf("Disco %s, de capacidad %i con unidades %s en la ruta %s.\n",name,size,unidad,path);
-
+                        crearDisco();
                     }
                 }else{
-                   printf("AVISO: No se puede crear el disco.\n");
+                   printf("AVISO: No se pudo crear el disco.\n");
                 }
             break;
             }
