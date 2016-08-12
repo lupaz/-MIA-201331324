@@ -5,7 +5,7 @@
 #include <sys/stat.h>
 #include <time.h>
 
-#define VAL 80
+#define VAL 150
 //================estrcuturas basicas=========================
 typedef struct tokens {
     int token;
@@ -21,12 +21,31 @@ typedef struct rutas{
     char nombre[25];
     struct rutas *siguiente;
 }rutas;
+//================Estructuras de orden =========================
+typedef struct iniciales{
+    int numero;
+    struct iniciales *siguiente;
+}iniciales;
+
+typedef struct finales{
+    int numero;
+    struct finales *siguiente;
+}finales;
+
+typedef struct rang{
+    int inicio;
+    int fin;
+    struct rang *siguiente;
+}rang;
 //================estrcuturas de Discos=========================
 
 typedef struct partition{
     char part_status;
     char part_type;
     char part_fit[3];
+    char part_name[16];
+    int  part_start;
+    int  part_size;
 }partition;
 
 typedef struct MBR {
@@ -56,6 +75,13 @@ tokens *cabezaT;
 tokens *colaT;
 rutas *cabezaR;
 rutas *colaR;
+iniciales *cabezaI;
+iniciales *colaI;
+finales *cabezaF;
+finales *colaF;
+rang*cabRango;
+rang *colRango;
+
 char linea[VAL]; //sera la encargada de contener toda la linea leida para luego analizarla por partes
 tokens * tokActual;
 tokens * preanalis;
@@ -81,9 +107,6 @@ int Bdelete=0;
 int Btype=0;
 int Badd=0;
 int tamano=0;
-int Bprimarias=0;
-int Bextendida=0;
-
 
 //===================================================================================Declaracion de Metodos===========================================================================================
 void anlisisLexico( char *linea );
@@ -136,6 +159,44 @@ int numeroAleatorio();
 
 void escribirMBR(char direc[],int tamanio);
 
+void ValidarOperacion();
+
+int fdisk1();
+
+int fdisk2();
+
+int fdisk3();
+
+void crearPrimaria(char ruta[], int tamanio, char fit1[], char nombre[], char tipo);
+
+void crearExtendida(char ruta[], int tamanio, char fit1[], char nombre[], char tipo);
+
+void crearLogica(char ruta[], int tamanio, char fit1[], char nombre[]);
+
+void addInicial(int numer);
+
+void impIniciales();
+
+void addFinal(int numer);
+
+void addRango(int inicio, int fin);
+
+void limpiarIniciales();
+
+void limpiarFinales();
+
+void limpiarRangos();
+
+void actualizarRangos(int tamaDisco);
+
+void inicialesFinales(char ruta[]);
+
+void inicialesFinalesLog(char ruta[], int inicioE, int tamaE);
+
+void imprimeRangos();
+
+int VerificarNombre(char ruta[],char nombre[]);
+
 //=========== metodos sintacticos =============
 void avanzarToken();
 void origen();
@@ -143,7 +204,11 @@ void COM1();
 void PAR();
 void PAR0();
 void PAR1();
+void PAR2();
+void PAR3();
+void PAR4();
 void realizarAcciones();
+
 //===========================================================================================Metodo Principal===========================================================================================
 int main(){
 //---------Aleatorio-----------------
@@ -155,8 +220,7 @@ int main(){
 //-----------------------------------
 
 
-
-    /*do{
+    do{
         printf("Adminitrador:>> ");
         leeConsola(linea,VAL);
         analisisLexico(linea);
@@ -256,6 +320,7 @@ int compararCadenas(char * cad1,char *cad2){
 }
 
 void analisisLexico(char linea[]){
+
     int i=0;
     char caracter='\0';
     char lexema[50];
@@ -519,7 +584,7 @@ int esNumero(char caracter){
 int esLetra(char caracter){
     int ascii=(int)caracter;
 
-    if( (ascii>64 & ascii<91 )|| (ascii>96 && ascii<123)){
+    if( (ascii>64 && ascii<91 )|| (ascii>96 && ascii<123)){
         return 1; //es un evento verdadero;
     }else{
         return 0; //es un evento falso;
@@ -637,6 +702,7 @@ void fecha_Hora( char cadena[]){
         struct tm *tlocal = localtime(&tiempo);
         strftime(cadena,128,"%d/%m/%y %H:%M:%S",tlocal);
 }
+
 //=========================carpetas===========================
 
 void QuitarComillas(char cad[]){
@@ -815,7 +881,7 @@ void escribirMBR(char direc[],int tamanio){
     escritura.mbr_partition_4.part_status='F';
 
     if(arch!=NULL){
-        fseek(arch,sizeof(MBR),SEEK_SET);
+        fseek(arch,0,SEEK_SET);
         //printf("Apertura correcta.\n");
         fwrite(&escritura,sizeof(MBR),1,arch);
         fclose(arch);
@@ -858,12 +924,17 @@ void limpiarRutas(){
 void reiniciarBanderas(){
     size=0;
     error=0;
+    add=0;
+    tamano=0;
 //================variables banderas ======================
     Bsize=0;
     Bname=0;
     Buni=0;
     Bpath=0;
-    tamano=0;
+    Bfit=0;
+    Bdelete=0;
+    Btype=0;
+    Badd=0;
 }
 
 void  borrarDisco(char ruta[]){
@@ -886,6 +957,876 @@ void  borrarDisco(char ruta[]){
     }
 }
 
+
+//===================== metodos particiones=======================
+
+void ValidarOperacion(){
+    if(Bpath==1 && Bsize==1 && Bname==1){
+        if(Badd==1){
+            fdisk3();
+        }else{
+            fdisk1();
+        }
+
+    }else if (Bname==1 && Bdelete==1 && Bpath==1){
+        fdisk2();
+    }else{
+
+        if(Bpath==0){
+            printf("ERROR: Falta el parametro Path.\n");
+        }else if( Bname==0){
+            printf("ERROR: Falta el parametro Name.\n");
+        }else{
+            printf("ERROR: Falta el parametro Size.\n");
+        }
+        printf("AVISO: No se pudo crear la particion.\n");
+    }
+}
+
+int fdisk1(){ //crea particiones
+    char fitFinal[5];
+
+    if(Buni==1){
+        if((strcasecmp(unidad,"M")==0) || (strcasecmp(unidad,"K")==0)|| (strcasecmp(unidad,"B")==0)){
+            if (strcasecmp(unidad,"M")==0){
+                if(size<2){
+                printf("ERROR: El tamano minimo de una particion es de 2 MB.\n");
+                printf("AVISO: No se pudo crear la particion.\n");
+                return -1;
+                }else{
+                    tamano=1024*1024*size;
+                }
+            }else if(strcasecmp(unidad,"K")==0){
+                if(size<2048){
+                    printf("ERROR: El tamano minimo de una paticion es de 2048 KB.\n");
+                    printf("AVISO: No se pudo crear el disco.\n");
+                     return -1;
+                }else{
+                    tamano=1024*size;
+                }
+            }else if(strcasecmp(unidad,"B")==0){
+                if(size<2097152){
+                    printf("ERROR: El tamano minimo de una particion es de 2097152 bytes.\n");
+                    printf("AVISO: No se pudo crear el disco.\n");
+                    return -1;
+                }else{
+                    tamano=size;
+                }
+            }
+        }else{
+            printf("ERROR: El parametro de unit no es valido.\n");
+            printf("AVISO: No se pudo crear la particion.\n");
+            return -1;
+        }
+
+    }else{
+        if(size<2048){
+            printf("ERROR: El tamano minimo de una particion es de 2048 KB.\n");
+            printf("AVISO: No se pudo crear el disco.\n");
+            return -1;
+        }else{
+            tamano=1024*size;
+        }
+    }
+
+    if(Bfit==1){
+        if((strcasecmp(fit,"BF")==0) || (strcasecmp(fit,"FF")==0)|| (strcasecmp(fit,"WF")==0)){
+            if (strcasecmp(fit,"BF")==0){
+                strcpy(fitFinal,"BF");
+            }else if(strcasecmp(fit,"FF")==0){
+                strcpy(fitFinal,"FF");
+            }else{
+                strcpy(fitFinal,"WF");
+            }
+        }else{
+            printf("ERROR: El parametro de fit no es valido.\n");
+            printf("AVISO: No se puede crear la particion.\n");
+        }
+    }else{
+        strcpy(fitFinal,"wF");
+    }
+
+    if(Btype==1){
+        if((strcasecmp(type,"P")==0) || (strcasecmp(type,"E")==0)|| (strcasecmp(type,"L")==0)){
+            if (strcasecmp(type,"P")==0){
+                if(VerificarNombre(path,name)==1){
+                    printf("ERROR: Ya existe una particion con el nombre introducido.\n");
+                    printf("AVISO: No se puede crear la particion Primaria.\n");
+                }else{
+                    crearPrimaria(path,tamano,fitFinal,name,'P');
+                }
+            }else if(strcasecmp(type,"E")==0){
+                if(VerificarNombre(path,name)==1){
+                    printf("ERROR: Ya existe una particion con el nombre introducido.\n");
+                    printf("AVISO: No se puede crear la particion Extendida.\n");
+                }else{
+                    crearExtendida(path,tamano,fitFinal,name,'E');
+                }
+            }else{
+                crearLogica(path,tamano,fitFinal,name);
+            }
+        }else{
+            printf("ERROR: El parametro de type no es valido.\n");
+            printf("AVISO: No se puede crear la particion.\n");
+        }
+    }else{
+       if(VerificarNombre(path,name)==1){
+            printf("ERROR: Ya existe una particion con el nombre introducido.\n");
+            printf("AVISO: No se puede crear la particion Primaria.\n");
+        }else{
+            crearPrimaria(path,tamano,fitFinal,name,'P');
+        }
+    }
+
+}
+
+int fdisk2(){ //elimina las particones
+
+}
+
+int fdisk3(){ //quita o agrega espacio
+
+
+}
+
+void crearPrimaria(char ruta[], int tamanio, char fit1[], char nombre[], char tipo){
+    QuitarComillas(ruta);
+    QuitarComillas(nombre);
+    int hayEspacio=0;
+    int BcreoP=0;
+    int tama=tamanio;
+    if(existeCarpeta(ruta)==1){
+        FILE *archivo;
+        archivo=fopen(ruta,"r+b");
+        if(archivo!=NULL){
+            inicialesFinales(ruta); //actualizamos los rangos;
+            MBR entrada;
+            fseek(archivo,0,SEEK_SET);
+            fread(&entrada,sizeof(MBR),1,archivo);
+            //=========calculamos si hay espacio para la particion;
+            int inicioPar;
+            rang *tmp;
+            tmp=cabRango;
+            while(tmp!=NULL){
+                 int disponible=tmp->fin-tmp->inicio;
+                 if(disponible>=tamanio){
+                    inicioPar=tmp->inicio;
+                    hayEspacio=1;
+                    break;
+                 }
+            tmp=tmp->siguiente;
+            }
+            //======================fin=============================
+
+            if(hayEspacio==1){
+
+                if(entrada.mbr_partition_1.part_status=='F' && BcreoP==0){
+                    entrada.mbr_partition_1.part_status='V';
+                    entrada.mbr_partition_1.part_type=tipo;
+                    strcpy(entrada.mbr_partition_1.part_fit,fit1);
+                    entrada.mbr_partition_1.part_start=inicioPar;
+                    entrada.mbr_partition_1.part_size=tamanio;
+                    strcpy(entrada.mbr_partition_1.part_name,nombre);
+                    fseek(archivo,0,SEEK_SET);
+                    fwrite(&entrada,sizeof(MBR),1,archivo); // aca escribo de nuevo el MBR
+                    fclose(archivo);
+                    printf("AVISO: Particion primaria creada correctamente.\n");
+                    BcreoP=1;
+                }
+
+                if(entrada.mbr_partition_2.part_status=='F' && BcreoP==0){
+
+                    entrada.mbr_partition_2.part_status='V';
+                    entrada.mbr_partition_2.part_type=tipo;
+                    strcpy(entrada.mbr_partition_2.part_fit,fit1);
+                    entrada.mbr_partition_2.part_start=inicioPar;
+                    entrada.mbr_partition_2.part_size=tamanio;
+                    strcpy(entrada.mbr_partition_2.part_name,nombre);
+                    fseek(archivo,0,SEEK_SET);
+                    fwrite(&entrada,sizeof(MBR),1,archivo); // aca escribo de nuevo el MBR
+                    fclose(archivo);
+                    printf("AVISO: Particion primaria creada correctamente.\n");
+                    BcreoP=1;
+                }
+
+                if(entrada.mbr_partition_3.part_status=='F' && BcreoP==0){
+                    entrada.mbr_partition_3.part_status='V';
+                    entrada.mbr_partition_3.part_type=tipo;
+                    strcpy(entrada.mbr_partition_3.part_fit,fit1);
+                    entrada.mbr_partition_3.part_start=(sizeof(MBR)+entrada.mbr_partition_1.part_size + entrada.mbr_partition_2.part_size+1);
+                    entrada.mbr_partition_3.part_size=tamanio;
+                    strcpy(entrada.mbr_partition_3.part_name,nombre);
+                    fseek(archivo,0,SEEK_SET);
+                    fwrite(&entrada,sizeof(MBR),1,archivo); // aca escribo de nuevo el MBR
+                    fclose(archivo);
+                    printf("AVISO: Particion primaria creada correctamente.\n");
+                    BcreoP=1;
+                }
+
+                if(entrada.mbr_partition_4.part_status=='F' && BcreoP==0){
+                    entrada.mbr_partition_4.part_status='V';
+                    entrada.mbr_partition_4.part_type=tipo;
+                    strcpy(entrada.mbr_partition_4.part_fit,fit1);
+                    entrada.mbr_partition_4.part_start=(sizeof(MBR)+entrada.mbr_partition_1.part_size+entrada.mbr_partition_2.part_size+entrada.mbr_partition_3.part_size+1);
+                    entrada.mbr_partition_4.part_size=tamanio;
+                    strcpy(entrada.mbr_partition_4.part_name,nombre);
+                    fseek(archivo,0,SEEK_SET);
+                    fwrite(&entrada,sizeof(MBR),1,archivo); // aca escribo de nuevo el MBR
+                    fclose(archivo);
+                    printf("AVISO: Particion primaria creada correctamente.\n");
+                    BcreoP=0;
+                }
+
+                if(BcreoP==0){
+                    printf("AVISO: No se puede crear otra particion primaria.\n");
+                }
+
+            }else{
+                printf("ERROR: No hay suficiente espacio para crea la particion.\n");
+                printf("AVISO: No se pudo crear la particion primaria.\n");
+            }
+
+        }else{
+            printf("ERROR: No se pudo acceder al disco.\n");
+            printf("AVISO: No se pudo crear la particion primaria.\n");
+        }
+
+    }else{
+        printf("ERROR: El Disco a particionar no existe.\n");
+        printf("AVISO: No se pudo crear la particion primaria.\n");
+    }
+
+}
+
+void crearExtendida(char ruta[], int tamanio, char fit1[], char nombre[], char tipo){
+    QuitarComillas(ruta);
+    QuitarComillas(nombre);
+    int hayEspacio=0;
+    int BcreoP=0;
+    if(existeCarpeta(ruta)==1){
+        FILE *archivo;
+        archivo=fopen(ruta,"r+b");
+        if(archivo!=NULL){
+            MBR entrada;
+            EBR salida;
+            fseek(archivo,0,SEEK_SET);
+            fread(&entrada,sizeof(MBR),1,archivo);
+            //=========calculamos si hay espacio para la particion;
+            inicialesFinales(ruta); //actualizamos los rangos;
+            int inicioPar;
+            rang *tmp;
+            tmp=cabRango;
+            while(tmp!=NULL){
+                 int disponible=tmp->fin-tmp->inicio;
+                 if(disponible>=tamanio){
+                    inicioPar=tmp->inicio;
+                    hayEspacio=1;
+                    break;
+                 }
+            tmp=tmp->siguiente;
+            }
+            //======================fin=============================
+
+            if (hayEspacio==1){
+                if(entrada.mbr_partition_1.part_type=='E' || entrada.mbr_partition_2.part_type=='E' || entrada.mbr_partition_3.part_type=='E' || entrada.mbr_partition_4.part_type=='E' ){
+                    printf("ERROR: Ya existe una particion extendida.\n");
+                    printf("AVISO: No se pueden crear dos particiones Extendidas.\n");
+                }else{
+
+                    if(entrada.mbr_partition_1.part_status=='F' && BcreoP==0){
+                        entrada.mbr_partition_1.part_status='V';
+                        entrada.mbr_partition_1.part_type=tipo;
+                        strcpy(entrada.mbr_partition_1.part_fit,fit1);
+                        entrada.mbr_partition_1.part_start=inicioPar;
+                        entrada.mbr_partition_1.part_size=tamanio;
+                        strcpy(entrada.mbr_partition_1.part_name,nombre);
+                        fseek(archivo,0,SEEK_SET);
+                        fwrite(&entrada,sizeof(MBR),1,archivo); // aca escribo de nuevo el MBR
+                        //===================creando el primer EBR ==================================
+                        salida.part_status='F';
+                        salida.part_start=inicioPar;
+                        salida.part_next=-1;
+                        // aca escribo el primer ebr de la particion extendida.
+                        fseek(archivo,inicioPar,SEEK_SET);
+                        fwrite(&salida,sizeof(EBR),1,archivo);
+                        fclose(archivo);
+                        printf("AVISO: Particion Extendida creada correctamente.\n");
+                        BcreoP=1;
+                    }
+
+
+                    if(entrada.mbr_partition_2.part_status=='F' && BcreoP==0){
+                        entrada.mbr_partition_2.part_status='V';
+                        entrada.mbr_partition_2.part_type=tipo;
+                        strcpy(entrada.mbr_partition_2.part_fit,fit1);
+                        entrada.mbr_partition_2.part_start=inicioPar;
+                        entrada.mbr_partition_2.part_size=tamanio;
+                        strcpy(entrada.mbr_partition_2.part_name,nombre);
+                        fseek(archivo,0,SEEK_SET);
+                        fwrite(&entrada,sizeof(MBR),1,archivo); // aca escribo de nuebo el MBR
+                        //===================creando el primer EBR ==================================
+                        //fseek(archivo,0,SEEK_SET);
+                        //fread(&entrada,sizeof(MBR),1,archivo);
+                        salida.part_status='F';
+                        salida.part_start=inicioPar;
+                        salida.part_next=-1;
+                        fseek(archivo,inicioPar,SEEK_SET);
+                        fwrite(&salida,sizeof(EBR),1,archivo); // aca escribo el primer ebr de la particion extendida.
+                        fclose(archivo);
+                        printf("AVISO: Particion Extendida creada correctamente.\n");
+                        BcreoP=1;
+                    }
+
+                    if(entrada.mbr_partition_3.part_status=='F' && BcreoP==0){
+                        entrada.mbr_partition_3.part_status='V';
+                        entrada.mbr_partition_3.part_type=tipo;
+                        strcpy(entrada.mbr_partition_3.part_fit,fit1);
+                        entrada.mbr_partition_3.part_start=inicioPar;
+                        entrada.mbr_partition_3.part_size=tamanio;
+                        strcpy(entrada.mbr_partition_3.part_name,nombre);
+                        fseek(archivo,0,SEEK_SET);
+                        fwrite(&entrada,sizeof(MBR),1,archivo); // aca escribo de nuebo el MBR
+                        //===================creando el primer EBR ==================================
+                        salida.part_status='F';
+                        salida.part_start=inicioPar;
+                        salida.part_next=-1;
+                        fseek(archivo,inicioPar,SEEK_SET);
+                        fwrite(&salida,sizeof(EBR),1,archivo); // aca escribo el primer ebr de la particion extendida.
+                        fclose(archivo);
+                        printf("AVISO: Particion Extendida creada correctamente.\n");
+                        BcreoP=1;
+                    }
+
+                    if(entrada.mbr_partition_4.part_status=='F' && BcreoP==0){
+                        entrada.mbr_partition_4.part_status='V';
+                        entrada.mbr_partition_4.part_type=tipo;
+                        strcpy(entrada.mbr_partition_4.part_fit,fit1);
+                        entrada.mbr_partition_4.part_start=inicioPar;
+                        strcpy(entrada.mbr_partition_4.part_name,nombre);
+                        fseek(archivo,0,SEEK_SET);
+                        fwrite(&entrada,sizeof(MBR),1,archivo); // aca escribo nuevamente el MBR
+                        //===================creando el primer EBR ==================================
+                        salida.part_status='F';
+                        salida.part_start=inicioPar;
+                        salida.part_next=-1;
+                        fseek(archivo,inicioPar,SEEK_SET);
+                        fwrite(&salida,sizeof(EBR),1,archivo); // aca escribo el primer ebr de la particion extendida.
+                        fclose(archivo);
+                        printf("AVISO: Particion Extendida creada correctamente.\n");
+                        BcreoP=1;
+                    }
+
+                    if(BcreoP==0){
+                        printf("ERROR: Ya existen cuatro particiones primarias.\n");
+                        printf("AVISO: No se pudo crear la particion Extendida.\n");
+                    }
+                }
+
+            }else{
+                printf("ERROR: No hay suficiente espacio para crear la particion.\n");
+                printf("AVISO: No se pudo crear la particion Extendida.\n");
+            }
+
+        }else{
+            printf("ERROR: No se pudo acceder al disco.\n");
+            printf("AVISO: No se pudo crear la particion primaria.\n");
+        }
+    }else{
+        printf("ERROR: El Disco a particionar no existe.\n");
+        printf("AVISO: No se pudo crear la particion extendida.\n");
+    }
+
+}
+
+void crearLogica(char ruta[], int tamanio, char fit1[], char nombre[]){
+    int hayEspacio=0;
+    QuitarComillas(ruta);
+    QuitarComillas(nombre);
+    if(existeCarpeta(ruta)==1){
+        int tru=1;
+        int posicion;
+        int tamaEdisponible;
+        int tamanioTmp=tamanio-sizeof(EBR)-1; //aca le resto al tamanio el ebr para que en la posicion tamanio+1 escribir el nuevo ebr
+        FILE *archivo;
+        archivo=fopen(ruta,"r+b");
+        if(archivo!=NULL){
+            MBR entrada;
+            EBR salida;
+            EBR lectura;
+            fseek(archivo,0,SEEK_SET);
+            fread(&entrada,sizeof(MBR),1,archivo);
+
+            if(entrada.mbr_partition_1.part_type=='E' || entrada.mbr_partition_2.part_type=='E' || entrada.mbr_partition_3.part_type=='E' || entrada.mbr_partition_4.part_type=='E' ){
+
+                if(entrada.mbr_partition_1.part_type=='E'){
+                    //=========calculamos si hay espacio para la particion;
+                    inicialesFinalesLog(ruta,entrada.mbr_partition_1.part_start,entrada.mbr_partition_1.part_size);
+                    int inicioLibre;
+                    rang *tmp;
+                    tmp=cabRango;
+                    while(tmp!=NULL){
+                         int disponible=tmp->fin-tmp->inicio;
+                         if(disponible>=tamanio){
+                            inicioLibre=tmp->inicio;
+                            hayEspacio=1;
+                            break;
+                         }
+                    tmp=tmp->siguiente;
+                    }
+                    //======================fin=============================
+
+                    if(hayEspacio==1){
+                        int tamanoReal=tamanio-sizeof(EBR); //el tamano ya incluido el EBR siguiete
+                        int siguienteEBR=inicioLibre+tamanoReal; //posicion donde va iniciar el ebr vacio
+                        int actualEbr=inicioLibre-sizeof(EBR)-1; //posicion del ebr actual
+                        //==================Actual EBR ===============================
+                        fseek(archivo,actualEbr,SEEK_SET);
+                        fread(&lectura,sizeof(EBR),1,archivo);
+                        lectura.part_next=siguienteEBR;
+                        lectura.part_status='V';
+                        strcpy(lectura.part_fit,fit1);
+                        lectura.part_size=tamanoReal;
+                        strcpy(lectura.part_name,nombre);
+                        fseek(archivo,lectura.part_start,SEEK_SET);
+                        fwrite(&lectura,sizeof(EBR),1,archivo);
+                        //================sigueinte EBR===================
+                        salida.part_status='F';
+                        salida.part_start=siguienteEBR;
+                        salida.part_next=-1;
+                        fseek(archivo,siguienteEBR,SEEK_SET);
+                        fwrite(&salida,sizeof(EBR),1,archivo);
+                        fclose(archivo);
+                        printf("AVISO: Particion Logica creada correctamente.\n");
+                    }else{
+                        printf("ERROR: NO  hay espacio suficiente.\n");
+                        printf("AVISO: No se pudo crear la particion Logica.\n");
+                    }
+
+                }else  if(entrada.mbr_partition_2.part_type=='E'){
+                    inicialesFinalesLog(ruta,entrada.mbr_partition_2.part_start,entrada.mbr_partition_2.part_size);
+                    int inicioLibre;
+                    rang *tmp;
+                    tmp=cabRango;
+                    while(tmp!=NULL){
+                         int disponible=tmp->fin-tmp->inicio;
+                         if(disponible>=tamanio){
+                            inicioLibre=tmp->inicio;
+                            hayEspacio=1;
+                            break;
+                         }
+                    tmp=tmp->siguiente;
+                    }
+                    //======================fin=============================
+
+                    if(hayEspacio==1){
+                        int tamanoReal=tamanio-sizeof(EBR); //el tamano ya incluido el EBR siguiete
+                        int siguienteEBR=inicioLibre+tamanoReal; //posicion donde va iniciar el ebr vacio
+                        int actualEbr=inicioLibre-sizeof(EBR)-1; //posicion del ebr actual
+                        //==================Actual EBR ===============================
+                        fseek(archivo,actualEbr,SEEK_SET);
+                        fread(&lectura,sizeof(EBR),1,archivo);
+                        lectura.part_next=siguienteEBR;
+                        lectura.part_status='V';
+                        strcpy(lectura.part_fit,fit1);
+                        lectura.part_size=tamanoReal;
+                        strcpy(lectura.part_name,nombre);
+                        fseek(archivo,lectura.part_start,SEEK_SET);
+                        fwrite(&lectura,sizeof(EBR),1,archivo);
+                        //================sigueinte EBR===================
+                        salida.part_status='F';
+                        salida.part_start=siguienteEBR;
+                        salida.part_next=-1;
+                        fseek(archivo,siguienteEBR,SEEK_SET);
+                        fwrite(&salida,sizeof(EBR),1,archivo);
+                        fclose(archivo);
+                        printf("AVISO: Particion Logica creada correctamente.\n");
+                    }else{
+                        printf("ERROR: NO  hay espacio suficiente.\n");
+                        printf("AVISO: No se pudo crear la particion Logica.\n");
+                    }
+
+                }else if(entrada.mbr_partition_3.part_type=='E'){
+                    //==============calculo del espacio======================
+                    inicialesFinalesLog(ruta,entrada.mbr_partition_3.part_start,entrada.mbr_partition_3.part_size);
+                    int inicioLibre;
+                    rang *tmp;
+                    tmp=cabRango;
+                    while(tmp!=NULL){
+                         int disponible=tmp->fin-tmp->inicio;
+                         if(disponible>=tamanio){
+                            inicioLibre=tmp->inicio;
+                            hayEspacio=1;
+                            break;
+                         }
+                    tmp=tmp->siguiente;
+                    }
+                    //======================fin=============================
+
+                    if(hayEspacio==1){
+                        int tamanoReal=tamanio-sizeof(EBR); //el tamano ya incluido el EBR siguiete
+                        int siguienteEBR=inicioLibre+tamanoReal; //posicion donde va iniciar el ebr vacio
+                        int actualEbr=inicioLibre-sizeof(EBR)-1; //posicion del ebr actual
+                        //==================Actual EBR ===============================
+                        fseek(archivo,actualEbr,SEEK_SET);
+                        fread(&lectura,sizeof(EBR),1,archivo);
+                        lectura.part_next=siguienteEBR;
+                        lectura.part_status='V';
+                        strcpy(lectura.part_fit,fit1);
+                        lectura.part_size=tamanoReal;
+                        strcpy(lectura.part_name,nombre);
+                        fseek(archivo,lectura.part_start,SEEK_SET);
+                        fwrite(&lectura,sizeof(EBR),1,archivo);
+                        //================sigueinte EBR===================
+                        salida.part_status='F';
+                        salida.part_start=siguienteEBR;
+                        salida.part_next=-1;
+                        fseek(archivo,siguienteEBR,SEEK_SET);
+                        fwrite(&salida,sizeof(EBR),1,archivo);
+                        fclose(archivo);
+                        printf("AVISO: Particion Logica creada correctamente.\n");
+                    }else{
+                        printf("ERROR: NO  hay espacio suficiente.\n");
+                        printf("AVISO: No se pudo crear la particion Logica.\n");
+                    }
+
+                }else if(entrada.mbr_partition_4.part_type=='E'){
+                    inicialesFinalesLog(ruta,entrada.mbr_partition_4.part_start,entrada.mbr_partition_4.part_size);
+                    int inicioLibre;
+                    rang *tmp;
+                    tmp=cabRango;
+                    while(tmp!=NULL){
+                         int disponible=tmp->fin-tmp->inicio;
+                         if(disponible>=tamanio){
+                            inicioLibre=tmp->inicio;
+                            hayEspacio=1;
+                            break;
+                         }
+                    tmp=tmp->siguiente;
+                    }
+                    //======================fin=============================
+
+                    if(hayEspacio==1){
+                        int tamanoReal=tamanio-sizeof(EBR); //el tamano ya incluido el EBR siguiete
+                        int siguienteEBR=inicioLibre+tamanoReal; //posicion donde va iniciar el ebr vacio
+                        int actualEbr=inicioLibre-sizeof(EBR)-1; //posicion del ebr actual
+                        //==================Actual EBR ===============================
+                        fseek(archivo,actualEbr,SEEK_SET);
+                        fread(&lectura,sizeof(EBR),1,archivo);
+                        lectura.part_next=siguienteEBR;
+                        lectura.part_status='V';
+                        strcpy(lectura.part_fit,fit1);
+                        lectura.part_size=tamanoReal;
+                        strcpy(lectura.part_name,nombre);
+                        fseek(archivo,lectura.part_start,SEEK_SET);
+                        fwrite(&lectura,sizeof(EBR),1,archivo);
+                        //================sigueinte EBR===================
+                        salida.part_status='F';
+                        salida.part_start=siguienteEBR;
+                        salida.part_next=-1;
+                        fseek(archivo,siguienteEBR,SEEK_SET);
+                        fwrite(&salida,sizeof(EBR),1,archivo);
+                        fclose(archivo);
+                        printf("AVISO: Particion Logica creada correctamente.\n");
+                    }else{
+                        printf("ERROR: NO  hay espacio suficiente.\n");
+                        printf("AVISO: No se pudo crear la particion Logica.\n");
+                    }
+
+                }
+            }else{
+                printf("ERROR: NO existe una particion extendida.\n");
+                printf("AVISO: No se puede crear la particion Logica.\n");
+            }
+        }else{
+            printf("ERROR: No se pudo acceder al disco.\n");
+            printf("AVISO: No se pudo crear la particion Logica.\n");
+        }
+     }else{
+        printf("ERROR: El Disco a particionar no existe.\n");
+        printf("AVISO: No se pudo crear la particion Logica.\n");
+     }
+}
+
+void addInicial(int numer){
+    if(cabezaI==NULL){
+		cabezaI=malloc(sizeof(iniciales));
+		cabezaI->numero=numer;
+		colaI=cabezaI;
+	}else{
+		iniciales *tmp;
+		tmp=cabezaI;
+		if(cabezaI->numero>numer){
+			cabezaI=malloc(sizeof(iniciales));
+			cabezaI->numero=numer;
+			cabezaI->siguiente=tmp;
+		}else if(colaI->numero<numer){
+			colaI->siguiente=malloc(sizeof(iniciales));
+			colaI->siguiente->numero=numer;
+			colaI=colaI->siguiente;
+		}else{
+
+			while(tmp!=NULL){
+                if(tmp->numero<numer && tmp->siguiente->numero>numer){
+                    iniciales *aux=tmp->siguiente;
+                    tmp->siguiente=malloc(sizeof(iniciales));
+                    tmp->siguiente->numero=numer;
+                    tmp->siguiente->siguiente=aux;
+                    break;
+                }
+            tmp=tmp->siguiente;
+			}
+		}
+	}
+}
+
+void addFinal(int numer){
+    if(cabezaF==NULL){
+		cabezaF=malloc(sizeof(finales));
+		cabezaF->numero=numer;
+		colaF=cabezaF;
+	}else{
+		finales *tmp;
+		tmp=cabezaF;
+		if(cabezaF->numero>numer){
+			cabezaF=malloc(sizeof(finales));
+			cabezaF->numero=numer;
+			cabezaF->siguiente=tmp;
+		}else if(colaF->numero<numer){
+			colaF->siguiente=malloc(sizeof(finales));
+			colaF->siguiente->numero=numer;
+			colaF=colaF->siguiente;
+		}else{
+			while(tmp!=NULL){
+                if(tmp->numero<numer && tmp->siguiente->numero>numer){
+                    finales *aux=tmp->siguiente;
+                    tmp->siguiente=malloc(sizeof(finales));
+                    tmp->siguiente->numero=numer;
+                    tmp->siguiente->siguiente=aux;
+                    break;
+                }
+            tmp=tmp->siguiente;
+			}
+		}
+	}
+}
+
+void impFinales(){
+    if(cabezaF!=NULL){
+        finales *tmp;
+        tmp=cabezaF;
+        while(tmp!=NULL){
+            printf("Valor: %i\n",tmp->numero);
+        tmp=tmp->siguiente;
+        }
+    }
+}
+
+void impIniciales(){
+    if(cabezaI!=NULL){
+        iniciales *tmp;
+        tmp=cabezaI;
+        while(tmp!=NULL){
+            printf("Valor: %i\n",tmp->numero);
+        tmp=tmp->siguiente;
+        }
+    }
+}
+
+void addRango(int inicio,int fin){
+
+    if(cabRango==NULL){
+        cabRango=malloc(sizeof(rang));
+        cabRango->inicio=inicio;
+        cabRango->fin=fin;
+        cabRango->siguiente=NULL;
+        colRango=cabRango;
+    }else{
+        colRango->siguiente=malloc(sizeof(rang));
+        colRango->siguiente->inicio=inicio;
+        colRango->siguiente->fin=fin;
+        colRango=colRango->siguiente;
+        colRango->siguiente=NULL;
+    }
+}
+
+void actualizarRangos(int tamaDisco){
+
+    if(cabezaI!=NULL){
+        iniciales *tmp;
+        finales *tmp2;
+        tmp=cabezaI;
+        tmp2=cabezaF;
+        while(tmp!=NULL){
+            if(tmp->siguiente==NULL){
+                addRango(tmp2->numero,tamaDisco);
+            }else{
+                addRango(tmp2->numero,tmp->siguiente->numero);
+            }
+        tmp=tmp->siguiente;
+        tmp2=tmp2->siguiente;
+        }
+    }
+}
+
+void inicialesFinales(char ruta[]){
+    if(existeCarpeta(ruta)==1){
+        FILE *archivo;
+        archivo=fopen(ruta,"r+b");
+        if(archivo!=NULL){
+            MBR entrada;
+            fseek(archivo,0,SEEK_SET);
+            fread(&entrada,sizeof(MBR),1,archivo);
+
+            addInicial(0);
+            addFinal(sizeof(MBR)+1); //le sumo un bit para que no se pierda un bit de cualquiera de las dos esrcutras que van a ser vecinas 150-151
+
+            if(entrada.mbr_partition_1.part_status=='V'){
+                int fin=entrada.mbr_partition_1.part_start + entrada.mbr_partition_1.part_size+1;
+                addInicial(entrada.mbr_partition_1.part_start);
+                addFinal(fin);
+            }
+
+            if(entrada.mbr_partition_2.part_status=='V'){
+                int fin=entrada.mbr_partition_2.part_start + entrada.mbr_partition_2.part_size+1;
+                addInicial(entrada.mbr_partition_2.part_start);
+                addFinal(fin);
+            }
+
+            if(entrada.mbr_partition_3.part_status=='V'){
+                int fin=entrada.mbr_partition_3.part_start + entrada.mbr_partition_3.part_size+1;
+                addInicial(entrada.mbr_partition_3.part_start);
+                addFinal(fin);
+            }
+
+            if(entrada.mbr_partition_4.part_status=='V'){
+                int fin=entrada.mbr_partition_4.part_start + entrada.mbr_partition_4.part_size+1;
+                addInicial(entrada.mbr_partition_4.part_start);
+                addFinal(fin);
+            }
+
+            actualizarRangos(entrada.mbr_tamano);
+            //imprimeRangos();
+        }
+    }
+}
+
+void inicialesFinalesLog(char ruta[], int inicioE, int tamaE){
+    int tru=1;
+    int posicion=0;
+    if(existeCarpeta(ruta)==1){
+        FILE *archivo;
+        archivo=fopen(ruta,"r+b");
+        if(archivo!=NULL){
+            EBR lectura;
+            posicion=inicioE;
+            while (tru==1){ //este while me ubica en el ultimo EBR que haya;
+                fseek(archivo,posicion,SEEK_SET);
+                fread(&lectura,sizeof(EBR),1,archivo);
+                if(lectura.part_next==-1){
+                    addInicial(lectura.part_start);
+                    addFinal(lectura.part_start+sizeof(EBR)+1);
+                    tru=0;
+                }else{
+                    posicion=lectura.part_next;
+                    addInicial(lectura.part_start);
+                    addFinal(lectura.part_start+sizeof(EBR)+lectura.part_size+1);
+                }
+            }
+            actualizarRangos(inicioE+tamaE);
+            //imprimeRangos();
+        }
+    }
+}
+
+void limpiarIniciales(){
+    if(cabezaI!=NULL){
+        iniciales *tmp=cabezaI;
+        while(tmp!=NULL){
+            free(tmp);
+        tmp=tmp->siguiente;
+        }
+        cabezaI=NULL;
+        colaI=NULL;
+    }
+}
+
+void limpiarFinales(){
+    if(cabezaF!=NULL){
+        finales *tmp=cabezaF;
+        while(tmp!=NULL){
+            free(tmp);
+        tmp=tmp->siguiente;
+        }
+        cabezaF=NULL;
+        colaF=NULL;
+    }
+}
+
+void limpiarRangos(){
+    if(cabRango!=NULL){
+        rang *tmp=cabRango;
+        while(tmp!=NULL){
+            free(tmp);
+        tmp=tmp->siguiente;
+        }
+        cabRango=NULL;
+        colRango=NULL;
+    }
+}
+
+void imprimeRangos(){
+
+    if(cabezaF!=NULL){
+        rang *tmp;
+        tmp=cabRango;
+        while(tmp!=NULL){
+            printf("Inicio: %i  Fin: %i \n",tmp->inicio,tmp->fin);
+        tmp=tmp->siguiente;
+        }
+    }
+}
+
+int VerificarNombre(char ruta[],char nombre[]){
+    QuitarComillas(ruta);
+    QuitarComillas(nombre);
+
+    if(existeCarpeta(ruta)==1){
+        FILE *archivo;
+        archivo=fopen(ruta,"r+b");
+        if(archivo!=NULL){
+            MBR entrada;
+            fseek(archivo,0,SEEK_SET);
+            fread(&entrada,sizeof(MBR),1,archivo);
+
+            if(entrada.mbr_partition_1.part_status='V'){
+
+                if(strcasecmp(entrada.mbr_partition_1.part_name,nombre)==0){
+                    return 1;
+                }
+            }
+
+            if(entrada.mbr_partition_2.part_status='V'){
+                if(strcasecmp(entrada.mbr_partition_2.part_name,nombre)==0){
+                    return 1;
+                }
+            }
+
+            if(entrada.mbr_partition_3.part_status='V'){
+                if(strcasecmp(entrada.mbr_partition_3.part_name,nombre)==0){
+                    return 1;
+                }
+            }
+
+            if(entrada.mbr_partition_4.part_status='V'){
+                if(strcasecmp(entrada.mbr_partition_4.part_name,nombre)==0){
+                    return 1;
+                }
+            }
+        }
+    }
+    return 0;
+}
+
 //=============================================================================Metodos de analisis sintactico===========================================================================================
 
 void realizarAcciones(){
@@ -894,6 +1835,9 @@ void realizarAcciones(){
     limpiarTokens();
     reiniciarBanderas();
     tokActual=NULL;
+    limpiarIniciales();
+    limpiarFinales();
+    limpiarRangos();
     //metodo que borra la tabla de tokens para analizar la siguiente linea.
 }
 
@@ -907,11 +1851,10 @@ void avanzarToken(){
             tokenActual=0;
         }
     }
-    //preanalis=tokActual->siguiente;
-    //preanalisis=preanalis->token;
 }
 
-//===================inicio del analisis sintactico y validaciones
+//===================inicio del analisis sintactico y validaciones=================================================
+
 void origen(){
     if(tokActual!=NULL){
          switch (tokenActual) {
@@ -919,6 +1862,19 @@ void origen(){
                 avanzarToken();
                 COM1();
                 if(error==0){ // aca pienso hacer las validaciones y la creacion de los archs
+
+                    if(Bpath==0 || Bsize==0 || Bname==0){
+                        if(Bpath==0){
+                            printf("ERROR: Falta el parametro Path.\n");
+                        }else if( Bname==0){
+                            printf("ERROR: Falta el parametro Name.\n");
+                        }else{
+                            printf("ERROR: Falta el parametro Size.\n");
+                        }
+                        printf("AVISO: No se pudo crear el disco.\n");
+                        break;
+                    }
+
                     if(Buni==1){
                             if( (strcasecmp(unidad,"M")==0) || (strcasecmp(unidad,"K")==0)){
                                 if (strcasecmp(unidad,"M")==0){
@@ -952,19 +1908,9 @@ void origen(){
                             tamano=1024*1024*size;
                         }
                     }
+                //EJECUCION si todo va bien hasta este punto;
+                    crearDisco();
 
-                    if(Bpath==0 || Bsize==0 || Bname==0){
-                        if(Bpath==0){
-                            printf("ERROR: Falta el parametro Path.\n");
-                        }else if( Bname==0){
-                            printf("ERROR: Falta el parametro Name.\n");
-                        }else{
-                            printf("ERROR: Falta el parametro Size.\n");
-                        }
-                        printf("AVISO: No se pudo crear el disco.\n");
-                    }else{
-                        crearDisco();
-                    }
                 }else{
                    printf("AVISO: No se pudo crear el disco.\n");
                 }
@@ -977,7 +1923,7 @@ void origen(){
                     avanzarToken();
                 }else{
                     avanzarToken();
-                    printf("ERROR: se esperaba \"-\" (paramentro obligatorio).\n");
+                    printf("ERROR: se esperaba \"-\" (path...).\n");
                     break;
                 }
 
@@ -1013,22 +1959,11 @@ void origen(){
             }
             case 15:{
                 avanzarToken();
-                COM1();
-                 if(error!=1){
-                    if(Buni==1){
-                         if((strcasecmp(unidad,"M")==0) || (strcasecmp(unidad,"K")==0)|| (strcasecmp(unidad,"B")==0)){
-                            //validar lo de las unidades;
-
-                        }else{
-                            error=1;
-                            avanzarToken();
-                            printf("El parametro de unit no es valido.\n");
-                        }
-
-                    }else{
-                        //por defecto
-                    }
-                    //validar lo de fit y lo de type
+                COM2();
+                 if(error==0){ //operaciones fdisk
+                    ValidarOperacion(); //esta funcion diferencia si es un add, delete o creacion.
+                 }else{
+                    printf("AVISO: No se pudo crear la particion.\n");
                  }
             break;
             }
@@ -1051,12 +1986,18 @@ void origen(){
 void COM1(){
     if(tokActual!=NULL){
         PAR();
+    }else{
+        printf("ERROR: No se reconocio ningun parametro.\n");
+        error=1;
     }
 }
 
 void COM2(){
     if(tokActual!=NULL){
         PAR2();
+    }else{
+        printf("ERROR: No se reconocio ningun parametro.\n");
+        error=1;
     }
 }
 
@@ -1277,7 +2218,7 @@ void PAR3(){
                         printf("se esperaba un caracter despues de ::.\n");
                         break;
                     }
-                    PAR();
+                    PAR2();
                 }else{
                    printf("El parametro unit no se puede repetir.\n");
                    error=1;
@@ -1306,7 +2247,7 @@ void PAR3(){
                         printf("se esperaba un caracter  despues de \"::\".\n");
                         break;
                     }
-                    PAR();
+                    PAR2();
                 }else{// aca notifico error cuando path viene mas de una vez
                     printf("El parametro Type no se puede repetir.\n");
                     error=1;
@@ -1335,7 +2276,7 @@ void PAR3(){
                         printf("Se esperaba un dupla de caracteres despues de \"::\".\n");
                         break;
                     }
-                    PAR();
+                    PAR2();
                 }else{
                     printf("El parametro fit no se puede repetir.\n");
                     error=1;
@@ -1364,16 +2305,16 @@ void PAR3(){
                         printf("Se esperaba fast o full despues de \"::\".\n");
                         break;
                     }
-                    PAR();
+                    PAR2();
                 }else{
                     printf("El parametro delete no se puede repetir.\n");
                     error=1;
                 }
             break;
             }
-            case 20:{
-                if(Bname<1){
-                    Bname=1;
+            case 20:{ //add
+                if(Badd<1){
+                    Badd=1;
                     avanzarToken();
 
                     if(tokenActual==5){ // token = ::
@@ -1414,10 +2355,9 @@ void PAR3(){
                         printf("Se esperaba una numero despues de \"::\".\n");
                         break;
                     }
-
-                    PAR();
+                    PAR2();
                 }else{
-                    printf("El parametro name no se puede repetir.\n");
+                    printf("El parametro add no se puede repetir.\n");
                     error=1;
                 }
             break;
@@ -1457,7 +2397,7 @@ void PAR4(){
                         printf("se esperaba un numero positivo despues de ::.\n");
                         break;
                     }
-                    PAR();
+                    PAR2();
                 }else{
                    printf("El parametro size no se puede repetir.\n");
                    error=1;
@@ -1486,7 +2426,7 @@ void PAR4(){
                         printf("se esperaba un numero positivo despues de \"::\".\n");
                         break;
                     }
-                    PAR();
+                    PAR2();
                 }else{// aca notifico error cuando path viene mas de una vez
                     printf("El parametro phat no se puede repetir.\n");
                     error=1;
@@ -1515,7 +2455,7 @@ void PAR4(){
                         printf("Se esperaba una cadena despues de \"::\".\n");
                         break;
                     }
-                    PAR();
+                    PAR2();
                 }else{
                     printf("El parametro name no se puede repetir.\n");
                     error=1;
@@ -1532,18 +2472,4 @@ void PAR4(){
     }
 }
 
-void TIP(){
 
-}
-
-void TIP0(){
-
-}
-
-void VAL0(){
-
-}
-
-void UNI(){
-
-}
