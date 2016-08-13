@@ -6,6 +6,7 @@
 #include <time.h>
 
 #define VAL 150
+#define VAL2 250
 //================estrcuturas basicas=========================
 typedef struct tokens {
     int token;
@@ -21,6 +22,23 @@ typedef struct rutas{
     char nombre[25];
     struct rutas *siguiente;
 }rutas;
+//=================Estrcuturas de montaje======================
+typedef struct letter{
+    int id;
+    char letra[2];
+    char nombreDisco[20];
+    struct letter *siguiente;
+    struct number *abajo;
+}letter;
+
+typedef struct number{
+    int id;
+    char ruta[25];
+    char nombreParticion[20];
+    char idParticion[5];
+    struct number *abajo;
+}number;
+
 //================Estructuras de orden =========================
 typedef struct iniciales{
     int numero;
@@ -81,8 +99,13 @@ finales *cabezaF;
 finales *colaF;
 rang*cabRango;
 rang *colRango;
+letter *cabezaL;
+letter *colaL;
+letter *tmpL;
+char letras[26]={'a','b','c','d','e','f','g','h','i','j','k','l','m','n','o','p','q','r','s','t','u','v','w','x','y','z'};
 
 char linea[VAL]; //sera la encargada de contener toda la linea leida para luego analizarla por partes
+char linea2[VAL2];
 tokens * tokActual;
 tokens * preanalis;
 int tokenActual=0;
@@ -95,6 +118,7 @@ char unidad[10];
 char fit[10];
 char type[10];
 char delVal[10];
+char idPar[10];
 int error=0;
 int add=0;
 //================variables banderas ======================
@@ -136,6 +160,8 @@ void crearCarpeta(char ruta[]);
 void agregarRuta(char ruta[]);
 
 void splitPath(char cadena[]);
+
+void splitPath2(char cadena[]);
 
 void imprimirRutas();
 
@@ -197,16 +223,52 @@ void imprimeRangos();
 
 int VerificarNombre(char ruta[],char nombre[]);
 
+int VerificarNombre2(char ruta[],char nombre[]);
+
+void eliminarParticiones(char ruta[], char nombre[],char tipo[]);
+
+void eliminarLogica(char ruta[], char nombre[], char tipo[]);
+
+void asignarLetra(char cadena[],char letra);
+
+void obtenerNombreDisco( char ruta[],char nombre[]);
+
+letter * DiscoMontado(char nombre[]);
+
+void addDisco(char nombre[]);
+
+int particionMontada(char nombre[], letter *disco);
+
+void addParticion(char nombre[], letter *disco,char ruta[]);
+
+void imprimirMontaje();
+
+int montarLogicas(char ruta[],char nombre [], char nombreDisco[]);
+
+letter * montajeDisponible();
+
+void leeArchivo(char ruta[]);
+
+int leefichero(char *cadena,int n,FILE *fichero);
+
+void consola();
+
+void archivo();
+
 //=========== metodos sintacticos =============
 void avanzarToken();
 void origen();
 void COM1();
+void COM2();
+void COM3();
 void PAR();
 void PAR0();
 void PAR1();
 void PAR2();
 void PAR3();
 void PAR4();
+void PAR5();
+void PAR6();
 void realizarAcciones();
 
 //===========================================================================================Metodo Principal===========================================================================================
@@ -216,32 +278,32 @@ int main(){
 	srand(raiz);                //---
 //---------Reservadas----------------
     cargarPalabrasReservadas(); //---
-    int salida=0;               //---
+    int salida=0;
+    char intro;                 //---
 //-----------------------------------
 
+               do{
+                    printf("Adminitrador:>> ");
+                    leeConsola(linea,VAL);
+                    analisisLexico(linea);
 
-    do{
-        printf("Adminitrador:>> ");
-        leeConsola(linea,VAL);
-        analisisLexico(linea);
+                    if(segundaLinea(linea)==1){
+                        printf("Second line:>> ");
+                        leeConsola(linea,VAL);
+                        analisisLexico(linea);
+                    }
 
-        if(segundaLinea(linea)==1){
-            printf("Second line:>> ");
-            leeConsola(linea,VAL);
-            analisisLexico(linea);
-        }
+                    if(cabezaT != NULL){
+                        tokenActual=cabezaT->token;
+                        tokActual=cabezaT;
+                    }
+                    realizarAcciones();
+                    //imprimirTokens();
+                    if(strcmp(linea,"exit")==0){
+                        salida=1;
+                    }
 
-        if(cabezaT != NULL){
-            tokenActual=cabezaT->token;
-            tokActual=cabezaT;
-        }
-        realizarAcciones();
-        if(strcmp(linea,"exit")==0){
-            salida=1;
-        }
-
-    }while(salida!=1);//*/
-
+                }while(salida!=1);//*/
     return 0;
 
 }
@@ -264,8 +326,8 @@ void cargarPalabrasReservadas(){
     strcpy(palabrasRes[12].palabra,"mount");
     strcpy(palabrasRes[13].palabra,"id");
     strcpy(palabrasRes[14].palabra,"umount");
-    strcpy(palabrasRes[15].palabra,"fast");
-    strcpy(palabrasRes[16].palabra,"full");
+    strcpy(palabrasRes[15].palabra,"exec"); //24
+    strcpy(palabrasRes[16].palabra,"rep");//25
 
 }
 
@@ -310,6 +372,35 @@ int leeConsola(char *cad, int n) {
 
     if (c != '\n' && c != EOF)
         while ((c = getchar()) != '\n' && c != EOF);
+
+    return 1;
+}
+
+int leefichero(char *cad,int n,FILE *fichero){
+//fgetc(fichero).
+    int i, c;
+
+    c=fgetc(fichero);
+
+    if (c == EOF) {
+        cad[0] = '\0';
+        return 0;
+    }
+
+    if (c == '\n')
+        i = 0;
+    else {
+        cad[0] = c;
+        i = 1;
+    }
+
+    for (; i < n-1 && (c=fgetc(fichero))!=EOF && c!='\n'; i++)
+       cad[i] = c;
+
+    cad[i] = '\0';
+
+    if (c != '\n' && c != EOF)
+        while ((c = fgetc(fichero)) != '\n' && c != EOF);
 
     return 1;
 }
@@ -722,10 +813,10 @@ void QuitarComillas(char cad[]){
 }
 
 void crearCarpeta(char ruta[]){ //recibe la rutas ya sin comillas
-    char comando[150]="sudo mkdir ";
+    char comando[150]=" mkdir ";
     strcat(comando,ruta);
-    strcat(comando," && sudo chmod 777 ");
-    strcat(comando,ruta);
+    //strcat(comando," && sudo chmod 777 ");
+    //strcat(comando,ruta);
     system(comando);
 }
 
@@ -745,6 +836,36 @@ void agregarRuta(char ruta[]){
 }
 
 void splitPath(char cadena[]){
+    char lexema[25];
+    lexema[0]='\0';
+    char caracter;
+    int aux=0;
+    int i=0;
+    for(;i<strlen(cadena);i++){
+        caracter=cadena[i];
+        if(caracter=='/'){
+            if(lexema[0]!='\0'){
+                lexema[aux]='\0';
+                aux=0;
+                agregarRuta(lexema);
+            }
+        }else{
+            if(caracter==' '){
+                caracter='_';
+            }
+            lexema[aux]=caracter;
+            aux++;
+            if(i==(strlen(cadena)-1)){
+                lexema[aux]='\0';
+                aux=0;
+                agregarRuta(lexema);
+            }
+        }
+    }
+}
+
+void splitPath2(char cadena[]){
+    QuitarComillas(cadena);
     char lexema[25];
     lexema[0]='\0';
     char caracter;
@@ -812,6 +933,7 @@ int existeCarpeta(char ruta[]){
     }else{
         return 1; //si existe
     }
+
 }
 
 //========================Archivos dsk==========================
@@ -957,7 +1079,6 @@ void  borrarDisco(char ruta[]){
     }
 }
 
-
 //===================== metodos particiones=======================
 
 void ValidarOperacion(){
@@ -1063,7 +1184,13 @@ int fdisk1(){ //crea particiones
                     crearExtendida(path,tamano,fitFinal,name,'E');
                 }
             }else{
-                crearLogica(path,tamano,fitFinal,name);
+                if(VerificarNombre2(path,name)==1){
+                    printf("ERROR: Ya existe una particion con el nombre introducido.\n");
+                    printf("AVISO: No se puede crear la particion Logica.\n");
+                }else{
+                    crearLogica(path,tamano,fitFinal,name);
+                }
+
             }
         }else{
             printf("ERROR: El parametro de type no es valido.\n");
@@ -1081,15 +1208,22 @@ int fdisk1(){ //crea particiones
 }
 
 int fdisk2(){ //elimina las particones
-
+    if(strcasecmp(delVal,"FAST")){
+        eliminarParticiones(path,name,delVal);
+    }else if(strcasecmp(delVal,"FULL")){
+        eliminarParticiones(path,name,delVal);
+    }else{
+        printf("ERROR: El parametro de delete no es valido.\n");
+        printf("AVISO: No se pudo eliminar la particion.\n");
+    }
 }
 
 int fdisk3(){ //quita o agrega espacio
-
-
+    //pendienton add
 }
 
 void crearPrimaria(char ruta[], int tamanio, char fit1[], char nombre[], char tipo){
+
     QuitarComillas(ruta);
     QuitarComillas(nombre);
     int hayEspacio=0;
@@ -1827,6 +1961,1036 @@ int VerificarNombre(char ruta[],char nombre[]){
     return 0;
 }
 
+int VerificarNombre2(char ruta[],char nombre[]){
+    QuitarComillas(ruta);
+    QuitarComillas(nombre);
+    int tru=1;
+    if(existeCarpeta(ruta)==1){
+        FILE *archivo;
+        archivo=fopen(ruta,"r+b");
+        if(archivo!=NULL){
+            int posicion=0;
+            MBR entrada;
+            EBR lectura;
+            fseek(archivo,0,SEEK_SET);
+            fread(&entrada,sizeof(MBR),1,archivo);
+
+            if(entrada.mbr_partition_1.part_type=='E'){
+                    posicion=entrada.mbr_partition_1.part_start;
+                    while (tru==1){ //este while me ubica en el ultimo EBR que haya;
+                        fseek(archivo,posicion,SEEK_SET);
+                        fread(&lectura,sizeof(EBR),1,archivo);
+                        if(lectura.part_next==-1){
+                            tru=0;
+                        }else{
+                            posicion=lectura.part_next;
+                            if(strcasecmp(lectura.part_name,nombre)==0){
+                                fclose(archivo);
+                                return 1;
+                            }
+                        }
+                    }
+                fclose(archivo);
+                return 0;
+            }
+
+            if(entrada.mbr_partition_2.part_type=='E'){
+                    posicion=entrada.mbr_partition_2.part_start;
+                    while (tru==1){ //este while me ubica en el ultimo EBR que haya;
+                        fseek(archivo,posicion,SEEK_SET);
+                        fread(&lectura,sizeof(EBR),1,archivo);
+                        if(lectura.part_next==-1){
+                            tru=0;
+                        }else{
+                            posicion=lectura.part_next;
+                            if(strcasecmp(lectura.part_name,nombre)==0){
+                                fclose(archivo);
+                                return 1;
+                            }
+                        }
+                    }
+                fclose(archivo);
+                return 0;
+            }
+
+            if(entrada.mbr_partition_3.part_type=='E'){
+
+                    posicion=entrada.mbr_partition_3.part_start;
+                    while (tru==1){ //este while me ubica en el ultimo EBR que haya;
+                        fseek(archivo,posicion,SEEK_SET);
+                        fread(&lectura,sizeof(EBR),1,archivo);
+                        if(lectura.part_next==-1){
+                            tru=0;
+                        }else{
+                            posicion=lectura.part_next;
+                            if(strcasecmp(lectura.part_name,nombre)==0){
+                                fclose(archivo);
+                                return 1;
+                            }
+                        }
+                    }
+                fclose(archivo);
+                return 0;
+            }
+
+            if(entrada.mbr_partition_4.part_type=='E'){
+                    posicion=entrada.mbr_partition_4.part_start;
+
+                    while (tru==1){ //este while me ubica en el ultimo EBR que haya;
+                        fseek(archivo,posicion,SEEK_SET);
+                        fread(&lectura,sizeof(EBR),1,archivo);
+                        if(lectura.part_next==-1){
+                            tru=0;
+                        }else{
+                            posicion=lectura.part_next;
+                            if(strcasecmp(lectura.part_name,nombre)==0){
+                                fclose(archivo);
+                                return 1;
+                            }
+                        }
+                    }
+                fclose(archivo);
+                return 0;
+            }
+        }
+    }
+    return 0;
+}
+
+//========================metodos de edicion de particiones===============================
+
+void eliminarLogica(char ruta[],char nombre[], char tipo[]){
+
+        QuitarComillas(ruta);
+        QuitarComillas(nombre);
+        int posAnterior=0;
+        int posSiguiente=0;
+        int tru=1;
+        if(existeCarpeta(ruta)==1){
+            FILE *archivo;
+            archivo=fopen(ruta,"r+b");
+            if(archivo!=NULL){
+                int posicion=0;
+                MBR entrada;
+                EBR lectura;
+                fseek(archivo,0,SEEK_SET);
+                fread(&entrada,sizeof(MBR),1,archivo);
+
+                if(entrada.mbr_partition_1.part_type=='E'){
+
+                        posicion=entrada.mbr_partition_1.part_start;
+                        while (tru==1){ //este while me ubica en el ultimo EBR que haya;
+                            fseek(archivo,posicion,SEEK_SET);
+                            fread(&lectura,sizeof(EBR),1,archivo);
+                            posAnterior=lectura.part_start;
+                            if(lectura.part_next==-1){
+                                tru=0;
+                            }else{
+                                posicion=lectura.part_next;
+                                fseek(archivo,posicion,SEEK_SET);
+                                fread(&lectura,sizeof(EBR),1,archivo);
+                                //=============vemos si hay un siguiente para dejarlo apuntado======
+                                if(lectura.part_next==-1){
+                                    posSiguiente=0;
+                                }else{
+                                    posSiguiente=lectura.part_next;
+                                }
+                                //==================================================================
+                                if(strcasecmp(lectura.part_name,nombre)==0){
+                                    if(posSiguiente==0){ // su anterior va dejar de apuntarlo por que no tiene siguientes
+                                        EBR escritura;  //como este ebr esta vacio entonces el anterio hay que dejarlo vacio tambien
+                                        if(strcasecmp(tipo,"FAST")==0){
+                                            escritura.part_status='F';
+                                            escritura.part_next=-1;
+                                            fseek(archivo,posAnterior,SEEK_SET);
+                                            fwrite(&escritura,sizeof(EBR),1,archivo);
+                                            printf("AVISO: Particion eliminada correctamente en modo: fast.\n");
+                                        }else{
+                                            escritura.part_status='F';
+                                            escritura.part_next=-1;
+                                            strcpy(escritura.part_name,"\0");
+                                            escritura.part_size=0;
+                                            escritura.part_next=0;
+                                            fseek(archivo,posAnterior,SEEK_SET);
+                                            fwrite(&escritura,sizeof(EBR),1,archivo);
+                                            char uno='\0';
+                                            fseek(archivo,posicion,SEEK_SET); //aca pongo con null todos los bists de este EBR
+                                            fwrite(&uno,sizeof(EBR),1,archivo);
+                                            printf("AVISO: Particion eliminada correctamente en modo: full.\n");
+                                        }
+                                    }else{
+                                       EBR escritura; //este va apuntar a su sigueinte pero es el caso donde el ebr no esta vacio, asi que no se debe perde la info
+                                        if(strcasecmp(tipo,"FAST")==0){ //solo se actualiza, se lee se actualiza y se excribe de nuevo
+                                            fseek(archivo,posAnterior,SEEK_SET);
+                                            fread(&escritura,sizeof(EBR),1,archivo);
+                                            escritura.part_next=posSiguiente;//aca le doy la posicion siguiente
+                                            fseek(archivo,posAnterior,SEEK_SET);
+                                            fwrite(&escritura,sizeof(EBR),1,archivo);
+                                            printf("AVISO: Particion eliminada correctamente en modo: fast.\n");
+                                        }else{
+                                            fseek(archivo,posAnterior,SEEK_SET);
+                                            fread(&escritura,sizeof(EBR),1,archivo);
+                                            escritura.part_next=posSiguiente;
+                                            fseek(archivo,posAnterior,SEEK_SET);
+                                            fwrite(&escritura,sizeof(EBR),1,archivo);
+                                            char uno='\0';
+                                            fseek(archivo,posicion,SEEK_SET);
+                                            fwrite(&uno,sizeof(EBR),1,archivo);
+                                            printf("AVISO: Particion eliminada correctamente en modo: full.\n");
+                                        }
+                                    }
+
+                                }
+                            }
+                        }
+                    fclose(archivo);
+                }
+
+                if(entrada.mbr_partition_2.part_type=='E'){
+                        posicion=entrada.mbr_partition_2.part_start;
+                        while (tru==1){ //este while me ubica en el ultimo EBR que haya;
+                            fseek(archivo,posicion,SEEK_SET);
+                            fread(&lectura,sizeof(EBR),1,archivo);
+                            posAnterior=lectura.part_start;
+                            if(lectura.part_next==-1){
+                                tru=0;
+                            }else{
+                                posicion=lectura.part_next;
+                                fseek(archivo,posicion,SEEK_SET);
+                                fread(&lectura,sizeof(EBR),1,archivo);
+                                //=============vemos si hay un siguiente para dejarlo apuntado======
+                                if(lectura.part_next==-1){
+                                    posSiguiente=0;
+                                }else{
+                                    posSiguiente=lectura.part_next;
+                                }
+                                //==================================================================
+                                if(strcasecmp(lectura.part_name,nombre)==0){
+                                    if(posSiguiente==0){ // su anterior va dejar de apuntarlo por que no tiene siguientes
+                                        EBR escritura;  //como este ebr esta vacio entonces el anterio hay que dejarlo vacio tambien
+                                        if(strcasecmp(tipo,"FAST")==0){
+                                            escritura.part_status='F';
+                                            escritura.part_next=-1;
+                                            fseek(archivo,posAnterior,SEEK_SET);
+                                            fwrite(&escritura,sizeof(EBR),1,archivo);
+                                            printf("AVISO: Particion eliminada correctamente en modo: fast.\n");
+                                        }else{
+                                            escritura.part_status='F';
+                                            escritura.part_next=-1;
+                                            strcpy(escritura.part_name,"\0");
+                                            escritura.part_size=0;
+                                            escritura.part_next=0;
+                                            fseek(archivo,posAnterior,SEEK_SET);
+                                            fwrite(&escritura,sizeof(EBR),1,archivo);
+                                            char uno='\0';
+                                            fseek(archivo,posicion,SEEK_SET); //aca pongo con null todos los bists de este EBR
+                                            fwrite(&uno,sizeof(EBR),1,archivo);
+                                            printf("AVISO: Particion eliminada correctamente en modo: full.\n");
+                                        }
+                                    }else{
+                                       EBR escritura; //este va apuntar a su sigueinte pero es el caso donde el ebr no esta vacio, asi que no se debe perde la info
+                                        if(strcasecmp(tipo,"FAST")==0){ //solo se actualiza, se lee se actualiza y se excribe de nuevo
+                                            fseek(archivo,posAnterior,SEEK_SET);
+                                            fread(&escritura,sizeof(EBR),1,archivo);
+                                            escritura.part_next=posSiguiente;//aca le doy la posicion siguiente
+                                            fseek(archivo,posAnterior,SEEK_SET);
+                                            fwrite(&escritura,sizeof(EBR),1,archivo);
+                                            printf("AVISO: Particion eliminada correctamente en modo: fast.\n");
+                                        }else{
+                                            fseek(archivo,posAnterior,SEEK_SET);
+                                            fread(&escritura,sizeof(EBR),1,archivo);
+                                            escritura.part_next=posSiguiente;
+                                            fseek(archivo,posAnterior,SEEK_SET);
+                                            fwrite(&escritura,sizeof(EBR),1,archivo);
+                                            char uno='\0';
+                                            fseek(archivo,posicion,SEEK_SET);
+                                            fwrite(&uno,sizeof(EBR),1,archivo);
+                                            printf("AVISO: Particion eliminada correctamente en modo: full.\n");
+                                        }
+                                    }
+
+                                }
+                            }
+                        }
+                    fclose(archivo);
+                }
+
+                if(entrada.mbr_partition_3.part_type=='E'){
+
+                        posicion=entrada.mbr_partition_3.part_start;
+                        while (tru==1){ //este while me ubica en el ultimo EBR que haya;
+                            fseek(archivo,posicion,SEEK_SET);
+                            fread(&lectura,sizeof(EBR),1,archivo);
+                            posAnterior=lectura.part_start;
+                            if(lectura.part_next==-1){
+                                tru=0;
+                            }else{
+                                posicion=lectura.part_next;
+                                fseek(archivo,posicion,SEEK_SET);
+                                fread(&lectura,sizeof(EBR),1,archivo);
+                                //=============vemos si hay un siguiente para dejarlo apuntado======
+                                if(lectura.part_next==-1){
+                                    posSiguiente=0;
+                                }else{
+                                    posSiguiente=lectura.part_next;
+                                }
+                                //==================================================================
+                                if(strcasecmp(lectura.part_name,nombre)==0){
+                                    if(posSiguiente==0){ // su anterior va dejar de apuntarlo por que no tiene siguientes
+                                        EBR escritura;  //como este ebr esta vacio entonces el anterio hay que dejarlo vacio tambien
+                                        if(strcasecmp(tipo,"FAST")==0){
+                                            escritura.part_status='F';
+                                            escritura.part_next=-1;
+                                            fseek(archivo,posAnterior,SEEK_SET);
+                                            fwrite(&escritura,sizeof(EBR),1,archivo);
+                                            printf("AVISO: Particion eliminada correctamente en modo: fast.\n");
+                                        }else{
+                                            escritura.part_status='F';
+                                            escritura.part_next=-1;
+                                            strcpy(escritura.part_name,"\0");
+                                            escritura.part_size=0;
+                                            escritura.part_next=0;
+                                            fseek(archivo,posAnterior,SEEK_SET);
+                                            fwrite(&escritura,sizeof(EBR),1,archivo);
+                                            char uno='\0';
+                                            fseek(archivo,posicion,SEEK_SET); //aca pongo con null todos los bists de este EBR
+                                            fwrite(&uno,sizeof(EBR),1,archivo);
+                                            printf("AVISO: Particion eliminada correctamente en modo: full.\n");
+                                        }
+                                    }else{
+                                       EBR escritura; //este va apuntar a su sigueinte pero es el caso donde el ebr no esta vacio, asi que no se debe perde la info
+                                        if(strcasecmp(tipo,"FAST")==0){ //solo se actualiza, se lee se actualiza y se excribe de nuevo
+                                            fseek(archivo,posAnterior,SEEK_SET);
+                                            fread(&escritura,sizeof(EBR),1,archivo);
+                                            escritura.part_next=posSiguiente;//aca le doy la posicion siguiente
+                                            fseek(archivo,posAnterior,SEEK_SET);
+                                            fwrite(&escritura,sizeof(EBR),1,archivo);
+                                            printf("AVISO: Particion eliminada correctamente en modo: fast.\n");
+                                        }else{
+                                            fseek(archivo,posAnterior,SEEK_SET);
+                                            fread(&escritura,sizeof(EBR),1,archivo);
+                                            escritura.part_next=posSiguiente;
+                                            fseek(archivo,posAnterior,SEEK_SET);
+                                            fwrite(&escritura,sizeof(EBR),1,archivo);
+                                            char uno='\0';
+                                            fseek(archivo,posicion,SEEK_SET);
+                                            fwrite(&uno,sizeof(EBR),1,archivo);
+                                            printf("AVISO: Particion eliminada correctamente en modo: full.\n");
+                                        }
+                                    }
+
+                                }
+                            }
+                        }
+                    fclose(archivo);
+                }
+
+                if(entrada.mbr_partition_4.part_type=='E'){
+
+                        posicion=entrada.mbr_partition_4.part_start;
+                        while (tru==1){ //este while me ubica en el ultimo EBR que haya;
+                            fseek(archivo,posicion,SEEK_SET);
+                            fread(&lectura,sizeof(EBR),1,archivo);
+                            posAnterior=lectura.part_start;
+                            if(lectura.part_next==-1){
+                                tru=0;
+                            }else{
+                                posicion=lectura.part_next;
+                                fseek(archivo,posicion,SEEK_SET);
+                                fread(&lectura,sizeof(EBR),1,archivo);
+                                //=============vemos si hay un siguiente para dejarlo apuntado======
+                                if(lectura.part_next==-1){
+                                    posSiguiente=0;
+                                }else{
+                                    posSiguiente=lectura.part_next;
+                                }
+                                //==================================================================
+                                if(strcasecmp(lectura.part_name,nombre)==0){
+                                    if(posSiguiente==0){ // su anterior va dejar de apuntarlo por que no tiene siguientes
+                                        EBR escritura;  //como este ebr esta vacio entonces el anterio hay que dejarlo vacio tambien
+                                        if(strcasecmp(tipo,"FAST")==0){
+                                            escritura.part_status='F';
+                                            escritura.part_next=-1;
+                                            fseek(archivo,posAnterior,SEEK_SET);
+                                            fwrite(&escritura,sizeof(EBR),1,archivo);
+                                            printf("AVISO: Particion eliminada correctamente en modo: fast.\n");
+                                        }else{
+                                            escritura.part_status='F';
+                                            escritura.part_next=-1;
+                                            strcpy(escritura.part_name,"\0");
+                                            escritura.part_size=0;
+                                            escritura.part_next=0;
+                                            fseek(archivo,posAnterior,SEEK_SET);
+                                            fwrite(&escritura,sizeof(EBR),1,archivo);
+                                            char uno='\0';
+                                            fseek(archivo,posicion,SEEK_SET); //aca pongo con null todos los bists de este EBR
+                                            fwrite(&uno,sizeof(EBR),1,archivo);
+                                            printf("AVISO: Particion eliminada correctamente en modo: full.\n");
+                                        }
+                                    }else{
+                                       EBR escritura; //este va apuntar a su sigueinte pero es el caso donde el ebr no esta vacio, asi que no se debe perde la info
+                                        if(strcasecmp(tipo,"FAST")==0){ //solo se actualiza, se lee se actualiza y se excribe de nuevo
+                                            fseek(archivo,posAnterior,SEEK_SET);
+                                            fread(&escritura,sizeof(EBR),1,archivo);
+                                            escritura.part_next=posSiguiente;//aca le doy la posicion siguiente
+                                            fseek(archivo,posAnterior,SEEK_SET);
+                                            fwrite(&escritura,sizeof(EBR),1,archivo);
+                                            printf("AVISO: Particion eliminada correctamente en modo: fast.\n");
+                                        }else{
+                                            fseek(archivo,posAnterior,SEEK_SET);
+                                            fread(&escritura,sizeof(EBR),1,archivo);
+                                            escritura.part_next=posSiguiente;
+                                            fseek(archivo,posAnterior,SEEK_SET);
+                                            fwrite(&escritura,sizeof(EBR),1,archivo);
+                                            char uno='\0';
+                                            fseek(archivo,posicion,SEEK_SET);
+                                            fwrite(&uno,sizeof(EBR),1,archivo);
+                                            printf("AVISO: Particion eliminada correctamente en modo: full.\n");
+                                        }
+                                    }
+
+                                }
+                            }
+                        }
+                    fclose(archivo);
+                }
+            }
+        }
+}
+
+void eliminarParticiones(char ruta[], char nombre[],char tipo[]){
+
+    int BborroP=0;
+    if(VerificarNombre(ruta,nombre)==1){
+        QuitarComillas(ruta);
+        QuitarComillas(nombre);
+        if(existeCarpeta(ruta)==1){
+            FILE *archivo;
+            archivo=fopen(ruta,"r+b");
+            if(archivo!=NULL){
+                MBR entrada;
+                fseek(archivo,0,SEEK_SET);
+                fread(&entrada,sizeof(MBR),1,archivo);
+
+                if(entrada.mbr_partition_1.part_status='V' && BborroP==0 ){
+
+                    if(strcasecmp(entrada.mbr_partition_1.part_name,nombre)==0){
+
+                        if(strcasecmp(tipo,"FAST")){
+                            entrada.mbr_partition_1.part_status='F';
+                            fseek(archivo,0,SEEK_SET);
+                            fwrite(&entrada,sizeof(MBR),1,archivo); // aca escribo de nuevo el MBR
+                            fclose(archivo);
+                            printf("AVISO: Particion eliminada correctamente.\n");
+                        }else{
+                            entrada.mbr_partition_1.part_status='F';
+                            entrada.mbr_partition_1.part_type="\0";
+                            strcpy(entrada.mbr_partition_1.part_fit,"\0");
+                            entrada.mbr_partition_1.part_start=0;
+                            entrada.mbr_partition_1.part_size=0;
+                            strcpy(entrada.mbr_partition_1.part_name,"\0");
+                            fseek(archivo,0,SEEK_SET);
+                            fwrite(&entrada,sizeof(MBR),1,archivo); // aca escribo de nuevo el MBR
+                            fclose(archivo);
+                            printf("AVISO: Particion eliminada correctamente.\n");
+                            BborroP=1;
+                        }
+
+                    }
+                }
+
+                if(entrada.mbr_partition_2.part_status='V' && BborroP==0 ){
+
+                        if(strcasecmp(tipo,"FAST")){
+                            entrada.mbr_partition_2.part_status='F';
+                            fseek(archivo,0,SEEK_SET);
+                            fwrite(&entrada,sizeof(MBR),1,archivo); // aca escribo de nuevo el MBR
+                            fclose(archivo);
+                            printf("AVISO: Particion eliminada correctamente en modo: fast.\n");
+                        }else{
+                            entrada.mbr_partition_2.part_status='F';
+                            entrada.mbr_partition_2.part_type="\0";
+                            strcpy(entrada.mbr_partition_2.part_fit,"\0");
+                            entrada.mbr_partition_2.part_start=0;
+                            entrada.mbr_partition_2.part_size=0;
+                            strcpy(entrada.mbr_partition_2.part_name,"\0");
+                            fseek(archivo,0,SEEK_SET);
+                            fwrite(&entrada,sizeof(MBR),1,archivo); // aca escribo de nuevo el MBR
+                            fclose(archivo);
+                            printf("AVISO: Particion eliminada correctamente en modo: full.\n");
+                            BborroP=1;
+                        }
+                }
+
+                if(entrada.mbr_partition_3.part_status='V' && BborroP==0 ) {
+
+                        if(strcasecmp(tipo,"FAST")){
+                            entrada.mbr_partition_3.part_status='F';
+                            fseek(archivo,0,SEEK_SET);
+                            fwrite(&entrada,sizeof(MBR),1,archivo); // aca escribo de nuevo el MBR
+                            fclose(archivo);
+                            printf("AVISO: Particion eliminada correctamente en modo: fast.\n");
+                        }else{
+                            entrada.mbr_partition_3.part_status='F';
+                            entrada.mbr_partition_3.part_type="\0";
+                            strcpy(entrada.mbr_partition_3.part_fit,"\0");
+                            entrada.mbr_partition_3.part_start=0;
+                            entrada.mbr_partition_3.part_size=0;
+                            strcpy(entrada.mbr_partition_3.part_name,"\0");
+                            fseek(archivo,0,SEEK_SET);
+                            fwrite(&entrada,sizeof(MBR),1,archivo); // aca escribo de nuevo el MBR
+                            fclose(archivo);
+                            printf("AVISO: Particion eliminada correctamente en modo: full.\n");
+                            BborroP=1;
+                        }
+                }
+
+                if(entrada.mbr_partition_4.part_status='V' && BborroP==0 ){
+
+                        if(strcasecmp(tipo,"FAST")){
+                            entrada.mbr_partition_4.part_status='F';
+                            fseek(archivo,0,SEEK_SET);
+                            fwrite(&entrada,sizeof(MBR),1,archivo); // aca escribo de nuevo el MBR
+                            fclose(archivo);
+                            printf("AVISO: Particion eliminada correctamente en modo: fast.\n");
+                        }else{
+                            entrada.mbr_partition_4.part_status='F';
+                            entrada.mbr_partition_4.part_type="\0";
+                            strcpy(entrada.mbr_partition_4.part_fit,"\0");
+                            entrada.mbr_partition_4.part_start=0;
+                            entrada.mbr_partition_4.part_size=0;
+                            strcpy(entrada.mbr_partition_4.part_name,"\0");
+                            fseek(archivo,0,SEEK_SET);
+                            fwrite(&entrada,sizeof(MBR),1,archivo); // aca escribo de nuevo el MBR
+                            fclose(archivo);
+                            printf("AVISO: Particion eliminada correctamente en modo: full.\n");
+                            BborroP=1;
+                        }
+                }
+            }else{
+                printf("ERROR: No se pudo acceder al disco.\n");
+                printf("AVISO: No se pudo eliminar la particion.\n");
+            }
+        }else{
+            printf("ERROR: La ruta ingresada no referencia ningun disco.\n");
+            printf("AVISO: No se pudo eliminar la particion.\n");
+        }
+
+    }else if(VerificarNombre2(ruta,nombre)==1){
+        eliminarLogica(ruta,nombre,tipo);
+    }else{
+        printf("ERROR: No existe niguna particion con el nombre introducido.\n");
+        printf("AVISO: No se pudo eliminar la particion.\n");
+    }
+
+}
+
+void montarParticion(char ruta[],char nombre[]){
+
+    int BmontoP=0;
+    char nombreDisco[25];
+    splitPath2(ruta);
+    strcpy(nombreDisco,colaR->nombre);
+    if(VerificarNombre(ruta,nombre)==1){
+        QuitarComillas(ruta);
+        QuitarComillas(nombre);
+        if(existeCarpeta(ruta)==1){
+            FILE *archivo;
+            archivo=fopen(ruta,"r+b");
+            if(archivo!=NULL){
+                MBR entrada;
+                fseek(archivo,0,SEEK_SET);
+                fread(&entrada,sizeof(MBR),1,archivo);
+
+                if(entrada.mbr_partition_1.part_status='V' && BmontoP==0){
+
+                    if(strcasecmp(entrada.mbr_partition_1.part_name,nombre)==0 ){
+                        letter *disco;
+                        disco=DiscoMontado(nombreDisco);
+                        if(disco==NULL){
+                            addDisco(nombreDisco);
+                            disco=DiscoMontado(nombreDisco);
+                            addParticion(nombre,disco,ruta);
+                            printf("AVISO: Particion montada correctamente.\n");
+                            BmontoP=1;
+                        }else{
+                            if(particionMontada(nombre,disco)==1){
+                                printf("AVISO: La particion ya se encuentra montada.\n");
+                                BmontoP=1;
+                            }else{
+                                addParticion(nombre,disco,ruta);
+                                printf("AVISO: Particion montada correctamente.\n");
+                                BmontoP=1;
+                            }
+                        }
+                    }
+                }
+
+                if(entrada.mbr_partition_2.part_status='V' && BmontoP==0 ){
+
+                    if(strcasecmp(entrada.mbr_partition_2.part_name,nombre)==0 ){
+                        letter *disco;
+                        disco=DiscoMontado(nombreDisco);
+                        if(disco==NULL){
+                            addDisco(nombreDisco);
+                            disco=DiscoMontado(nombreDisco);
+                            addParticion(nombre,disco,ruta);
+                            printf("AVISO: Particion montada correctamente.\n");
+                            BmontoP=1;
+                        }else{
+                            if(particionMontada(nombre,disco)==1){
+                                printf("AVISO: La particion ya se encuentra montada.\n");
+                                BmontoP=1;
+                            }else{
+                                addParticion(nombre,disco,ruta);
+                                printf("AVISO: Particion montada correctamente.\n");
+                                BmontoP=1;
+                            }
+                        }
+                    }
+                }
+
+                if(entrada.mbr_partition_3.part_status='V' && BmontoP==0 ) {
+
+                    if(strcasecmp(entrada.mbr_partition_3.part_name,nombre)==0 ){
+                        letter *disco;
+                        disco=DiscoMontado(nombreDisco);
+                        if(disco==NULL){
+                            addDisco(nombreDisco);
+                            disco=DiscoMontado(nombreDisco);
+                            addParticion(nombre,disco,ruta);
+                            printf("AVISO: Particion montada correctamente.\n");
+                            BmontoP=1;
+                        }else{
+                            if(particionMontada(nombre,disco)==1){
+                                printf("AVISO: La particion ya se encuentra montada.\n");
+                            }else{
+                                addParticion(nombre,disco,ruta);
+                                printf("AVISO: Particion montada correctamente.\n");
+                            }
+                        }
+                    }
+                }
+
+                if(entrada.mbr_partition_4.part_status='V' && BmontoP==0 ){
+
+                    if(strcasecmp(entrada.mbr_partition_4.part_name,nombre)==0 ){
+                        letter *disco;
+                        disco=DiscoMontado(nombreDisco);
+                        if(disco==NULL){
+                            addDisco(nombreDisco);
+                            disco=DiscoMontado(nombreDisco);
+                            addParticion(nombre,disco,ruta);
+                            printf("AVISO: Particion montada correctamente.\n");
+                            BmontoP=1;
+                        }else{
+                            if(particionMontada(nombre,disco)==1){
+                                printf("AVISO: La particion ya se encuentra montada.\n");
+                                BmontoP=1;
+                            }else{
+                                addParticion(nombre,disco,ruta);
+                                printf("AVISO: Particion montada correctamente.\n");
+                                BmontoP=1;
+                            }
+                        }
+                    }
+                }
+
+            if(BmontoP==0){
+                printf("AVISO: No se pudo montar la particion.\n");
+            }
+
+            }else{
+                printf("ERROR: No se pudo acceder al disco.\n");
+                printf("AVISO: No se pudo montar la particion.\n");
+            }
+        }else{
+            printf("ERROR: La ruta ingresada no referencia ningun disco.\n");
+            printf("AVISO: No se pudo montar la particion.\n");
+        }
+
+    }else if(VerificarNombre2(ruta,nombre)==1){
+        montarLogicas(ruta,nombre,nombreDisco);
+    }else{
+        printf("ERROR: No existe niguna particion con el nombre introducido.\n");
+        printf("AVISO: No se pudo montar la particion.\n");
+    }
+}
+
+int montarLogicas(char ruta[],char nombre [], char nombreDisco[]){
+    int posAnterior=0;
+        int posSiguiente=0;
+        int tru=1;
+        if(existeCarpeta(ruta)==1){
+            FILE *archivo;
+            archivo=fopen(ruta,"r+b");
+            if(archivo!=NULL){
+                int posicion=0;
+                MBR entrada;
+                EBR lectura;
+                fseek(archivo,0,SEEK_SET);
+                fread(&entrada,sizeof(MBR),1,archivo);
+
+                if(entrada.mbr_partition_1.part_type=='E'){
+                        posicion=entrada.mbr_partition_1.part_start;
+                        while (tru==1){ //este while me ubica en el ultimo EBR que haya;
+                            fseek(archivo,posicion,SEEK_SET);
+                            fread(&lectura,sizeof(EBR),1,archivo);
+                            if(lectura.part_next==-1){
+                                tru=0;
+                            }else{
+                                posicion=lectura.part_next;
+                                if(strcasecmp(lectura.part_name,nombre)==0){
+                                     letter *disco;
+                                     disco=DiscoMontado(nombreDisco);
+                                     if(disco==NULL){
+                                        addDisco(nombre);
+                                        disco=DiscoMontado(nombreDisco);
+                                        addParticion(nombre,disco,ruta);
+                                        printf("AVISO: Particion montada correctamente.\n");
+                                     }else{
+                                        if(particionMontada(nombre,disco)==1){
+                                            printf("AVISO: La particion ya se encuentra montada.\n");
+                                        }else{
+                                            addParticion(nombre,disco,ruta);
+                                            printf("AVISO: Particion montada correctamente.\n");
+                                        }
+                                     }
+                                    fclose(archivo);
+                                    return 1;
+                                }
+                            }
+                        }
+                    fclose(archivo);
+                    return 0;
+                }
+
+                if(entrada.mbr_partition_2.part_type=='E'){
+                        posicion=entrada.mbr_partition_2.part_start;
+                        while (tru==1){ //este while me ubica en el ultimo EBR que haya;
+                            fseek(archivo,posicion,SEEK_SET);
+                            fread(&lectura,sizeof(EBR),1,archivo);
+                            if(lectura.part_next==-1){
+                                tru=0;
+                            }else{
+                                posicion=lectura.part_next;
+                                if(strcasecmp(lectura.part_name,nombre)==0){
+                                    letter *disco;
+                                     disco=DiscoMontado(nombreDisco);
+                                     if(disco==NULL){
+                                        addDisco(nombre);
+                                        disco=DiscoMontado(nombreDisco);
+                                        addParticion(nombre,disco,ruta);
+                                        printf("AVISO: Particion montada correctamente.\n");
+                                     }else{
+                                        if(particionMontada(nombre,disco)==1){
+                                            printf("AVISO: La particion ya se encuentra montada.\n");
+                                        }else{
+                                            addParticion(nombre,disco,ruta);
+                                            printf("AVISO: Particion montada correctamente.\n");
+                                        }
+                                     }
+                                    fclose(archivo);
+                                    return 1;
+                                }
+                            }
+                        }
+                    fclose(archivo);
+                    return 0;
+                }
+
+                if(entrada.mbr_partition_3.part_type=='E'){
+
+                        posicion=entrada.mbr_partition_3.part_start;
+                        while (tru==1){ //este while me ubica en el ultimo EBR que haya;
+                            fseek(archivo,posicion,SEEK_SET);
+                            fread(&lectura,sizeof(EBR),1,archivo);
+                            if(lectura.part_next==-1){
+                                tru=0;
+                            }else{
+                                posicion=lectura.part_next;
+                                if(strcasecmp(lectura.part_name,nombre)==0){
+                                    letter *disco;
+                                     disco=DiscoMontado(nombreDisco);
+                                     if(disco==NULL){
+                                        addDisco(nombre);
+                                        disco=DiscoMontado(nombreDisco);
+                                        addParticion(nombre,disco,ruta);
+                                        printf("AVISO: Particion montada correctamente.\n");
+                                     }else{
+                                        if(particionMontada(nombre,disco)==1){
+                                            printf("AVISO: La particion ya se encuentra montada.\n");
+                                        }else{
+                                            addParticion(nombre,disco,ruta);
+                                            printf("AVISO: Particion montada correctamente.\n");
+                                        }
+                                     }
+
+                                    fclose(archivo);
+                                    return 1;
+                                }
+                            }
+                        }
+                    fclose(archivo);
+                    return 0;
+                }
+
+                if(entrada.mbr_partition_4.part_type=='E'){
+                        posicion=entrada.mbr_partition_4.part_start;
+
+                        while (tru==1){ //este while me ubica en el ultimo EBR que haya;
+                            fseek(archivo,posicion,SEEK_SET);
+                            fread(&lectura,sizeof(EBR),1,archivo);
+                            if(lectura.part_next==-1){
+                                tru=0;
+                            }else{
+                                posicion=lectura.part_next;
+                                if(strcasecmp(lectura.part_name,nombre)==0){
+                                    letter *disco;
+                                     disco=DiscoMontado(nombreDisco);
+                                     if(disco==NULL){
+                                        addDisco(nombre);
+                                        disco=DiscoMontado(nombreDisco);
+                                        addParticion(nombre,disco,ruta);
+                                        printf("AVISO: Particion montada correctamente.\n");
+                                     }else{
+                                        if(particionMontada(nombre,disco)==1){
+                                            printf("AVISO: La particion ya se encuentra montada.\n");
+                                        }else{
+                                            addParticion(nombre,disco,ruta);
+                                            printf("AVISO: Particion montada correctamente.\n");
+                                        }
+                                     }
+                                    fclose(archivo);
+                                    return 1;
+                                }
+                            }
+                        }
+                    fclose(archivo);
+                    return 0;
+                }
+            }
+        }
+
+}
+
+void obtenerNombreDisco( char ruta[],char nombre[]){
+    splitPath2(ruta);
+    strcpy(nombre,colaR->nombre);//aca obtengo el nombre del disco
+}
+
+void asignarLetra(char cadena[],char letra){
+    cadena[0]=letra;
+    cadena[1]='\0';
+}
+
+letter * DiscoMontado(char nombre[]){
+
+    if(cabezaL!=NULL){
+        letter *tmp;
+        tmp=cabezaL;
+        while(tmp!=NULL){
+            if(strcasecmp(tmp->nombreDisco,nombre)==0){
+                return tmp;
+            }
+        tmp=tmp->siguiente;
+        }
+    return NULL;
+    }
+
+}
+
+void addDisco(char nombre[]){
+
+    if(cabezaL==NULL){
+        cabezaL=malloc(sizeof(letter));
+        cabezaL->id=0;
+        asignarLetra(cabezaL->letra,letras[cabezaL->id]);
+        strcpy(cabezaL->nombreDisco,nombre);
+        cabezaL->siguiente=NULL;
+        cabezaL->abajo=NULL;
+        colaL=cabezaL;
+    }else{
+        letter *disponible;
+        disponible=montajeDisponible();
+        if(disponible!=NULL){
+            strcpy(disponible->nombreDisco,nombre);
+        }else{
+            letter *tmp;
+            tmp= colaL;
+            colaL->siguiente=malloc(sizeof(letter));
+            colaL->siguiente->id=(tmp->id+1);
+            asignarLetra(colaL->siguiente->letra,letras[tmp->id+1]);
+            strcpy(colaL->siguiente->nombreDisco,nombre);
+            colaL->siguiente->abajo=NULL;
+            colaL=colaL->siguiente;
+            colaL->siguiente=NULL;
+        }
+
+    }
+
+}
+
+int particionMontada(char nombre[], letter *disco){
+
+    if(disco!=NULL){
+        if(disco->abajo!=NULL){
+            number *tmp;
+            tmp=disco->abajo;
+            while(tmp!=NULL){
+                if(strcasecmp(tmp->nombreParticion,nombre)==0){
+                    return 1;
+                }
+            tmp=tmp->abajo;
+            }
+
+        }else{
+            return 0;
+        }
+    }
+
+}
+
+void addParticion(char nombre[], letter *disco,char ruta[]){
+
+    if(disco!=NULL){
+        if(disco->abajo==NULL){
+            disco->abajo=malloc(sizeof(number));
+            disco->abajo->id=0;
+            strcpy(disco->abajo->nombreParticion,nombre);
+            strcpy(disco->abajo->ruta,ruta);
+            sprintf(disco->abajo->idParticion,"vd%s%i",disco->letra,disco->abajo->id);
+            disco->abajo->abajo=NULL;
+        }else{
+            number *tmp;
+            tmp=disco->abajo;
+            while(tmp->abajo!=NULL){
+                tmp=tmp->abajo;
+            }
+            tmp->abajo=malloc(sizeof(number));
+            tmp->abajo->id=tmp->id+1;
+            strcpy(tmp->abajo->nombreParticion,nombre);
+            strcpy(tmp->abajo->ruta,ruta);
+            sprintf(tmp->abajo->idParticion,"vd%s%i",disco->letra,tmp->id+1);
+            tmp->abajo->abajo=NULL;
+        }
+    }
+}
+
+void imprimirMontaje(){
+
+    if(cabezaL!=NULL){
+        letter *tmpL;
+        tmpL=cabezaL;
+        number *tmpN;
+        printf("%4s\t\t\t%2s\t\t\t%2s\n","ID","RUTA","NOMBRE");
+        while(tmpL!=NULL){
+            tmpN=tmpL->abajo;
+            while(tmpN!=NULL){
+            printf("%4s\t\t\t%2s\t\t%2s\n",tmpN->idParticion,tmpN->ruta,tmpN->nombreParticion);
+            tmpN=tmpN->abajo;
+            }
+        tmpL=tmpL->siguiente;
+        }
+
+    }
+
+}
+
+void desmontarPar(char idePAr[]){
+
+    if(cabezaL!=NULL){
+        letter *tmpL;
+        tmpL=cabezaL;
+        number *tmpN;
+        number *primera;
+        number *anterior;
+        while(tmpL!=NULL){
+            primera=tmpL->abajo;
+            tmpN=tmpL->abajo;
+            while(tmpN!=NULL){
+                if(strcasecmp(tmpN->idParticion,idePAr)==0){
+                    if(primera==tmpN){
+                        tmpL->abajo=tmpN->abajo;
+                        free(tmpN);
+                        printf("AVISO: Particion desmontada correctamente.\n");
+                        break;
+                    }else if(tmpN->abajo!=NULL){
+                        anterior->abajo=tmpN->abajo;
+                        free(tmpN);
+                        printf("AVISO: Particion desmontada correctamente.\n");
+                        break;
+                    }else if(tmpN->abajo==NULL){
+                        anterior->abajo=NULL;
+                        free(tmpN);
+                        printf("AVISO: Particion desmontada correctamente.\n");
+                        break;
+                    }
+                }
+            anterior=tmpN;
+            tmpN=tmpN->abajo;
+            }
+        tmpL=tmpL->siguiente;
+        }
+
+        tmpL=cabezaL;
+
+        while(tmpL!=NULL){
+            if(tmpL->abajo==NULL){
+                strcpy(tmpL->nombreDisco,"dis");
+            }
+        tmpL=tmpL->siguiente;
+        }
+
+    }
+}
+
+letter * montajeDisponible(){
+
+    if(cabezaL!=NULL){
+        letter*tmpL;
+        tmpL=cabezaL;
+        while(tmpL!=NULL){
+            if(strcasecmp(tmpL->nombreDisco,"dis")==0){
+                return tmpL;
+            }
+        tmpL=tmpL->siguiente;
+        }
+     return NULL;
+    }
+
+}
+
+//=============================lectura de archivo=============
+
+void leeArchivo(char ruta[]){
+    FILE *archivo;
+    QuitarComillas(ruta);
+    archivo=fopen(ruta,"r");
+    if(archivo!=NULL){
+
+       while (!feof(archivo)){
+            leefichero(linea,VAL,archivo);
+            analisisLexico(linea);
+            if(segundaLinea(linea)==1){
+                leefichero(linea, VAL, archivo);
+                analisisLexico(linea);
+            }
+
+            //imprimirTokens();
+            if(cabezaT != NULL){
+                tokenActual=cabezaT->token;
+                tokActual=cabezaT;
+            }
+            realizarAcciones();
+        }
+    fclose(archivo);
+    }else{
+        printf("ERROR: No se pudo acceder al archivo.\n");
+        printf("AVISO: Verifique la ruta.\n");
+    }
+}
+
 //=============================================================================Metodos de analisis sintactico===========================================================================================
 
 void realizarAcciones(){
@@ -1957,7 +3121,7 @@ void origen(){
 
             break;
             }
-            case 15:{
+            case 15:{ //fdisk
                 avanzarToken();
                 COM2();
                  if(error==0){ //operaciones fdisk
@@ -1967,12 +3131,117 @@ void origen(){
                  }
             break;
             }
-            case 21:{
-
+            case 21:{ //mount
+                avanzarToken();
+                COM3();
+                if(error==0){ //operaciones mount
+                     montarParticion(path,name);
+                 }else{
+                    printf("AVISO: No se pudo montar la particion.\n");
+                 }
             break;
             }
             case 23:{
+                avanzarToken();
 
+                if(tokenActual==7){ // token = -
+                    avanzarToken();
+                }else{
+                    avanzarToken();
+                    printf("ERROR: se esperaba \"-\" (obligatorio).\n");
+                    break;
+                }
+
+                if(tokenActual==22){ // token = id
+                    avanzarToken();
+                }else{
+                    avanzarToken();
+                    printf("ERROR: se esperaba id despues de \"-\".\n");
+                    break;
+                }
+
+                if(tokenActual==1){ // token = id
+                    avanzarToken();
+                }else{
+                    avanzarToken();
+                    printf("ERROR: se esperaba un id valido (idn).\n");
+                    break;
+                }
+
+                if(tokenActual==5){ // token = ::
+                    avanzarToken();
+                }else{
+                    error=1;
+                    avanzarToken();
+                    printf("ERROR: se esperaba \"::\" despues de id.\n");
+                    break;
+                }
+
+                if(tokenActual==2){ // token = id
+                    strcpy(idPar,tokActual->lexema);
+                    avanzarToken();
+                }else{
+                    error=1;
+                    avanzarToken();
+                    printf("ERROR: se esperaba \"::\" despues de id.\n");
+                    break;
+                }
+
+                if(error==0){
+                    desmontarPar(idPar);
+                }else{
+                    printf("AVISO: No se pudo desmontar la particion.\n");
+                }
+            break;
+            }
+            case 24:{ //exec
+
+                avanzarToken();
+
+                if(tokenActual==7){ // token = ::
+                    avanzarToken();
+                }else{
+                    avanzarToken();
+                    printf("ERROR: se esperaba \"-\" (path...).\n");
+                    break;
+                }
+
+                if(tokenActual==12){ // token = ::
+                    avanzarToken();
+                }else{
+                    avanzarToken();
+                    printf("ERROR: se esperaba Phat despues de \"-\".\n");
+                    break;
+                }
+
+                if(tokenActual==5){ // token = ::
+                    avanzarToken();
+                }else{
+                    error=1;
+                    avanzarToken();
+                    printf("ERROR: se esperaba \"::\" despues de path.\n");
+                    break;
+                }
+
+                if(tokenActual==4){ //token = numero
+                    strcpy(path,tokActual->lexema); // global
+                    avanzarToken();
+                }else{
+                    error=1;
+                    avanzarToken();
+                    printf("ERROR: se esperaba una cadea despues de \"::\".\n");
+                    break;
+                }
+
+                if(error==0){
+                    leeArchivo(path);
+                }else{
+                     printf("AVISO: No se pudo leer el archivo.\n");
+                }
+            break;
+            }
+            case 3:{
+                printf("Comentario: %s\n",tokActual->lexema);
             break;
             }
             default:{
@@ -1998,6 +3267,14 @@ void COM2(){
     }else{
         printf("ERROR: No se reconocio ningun parametro.\n");
         error=1;
+    }
+}
+
+void COM3(){
+    if(tokActual!=NULL){
+        PAR5();
+    }else{
+        imprimirMontaje();
     }
 }
 
@@ -2076,7 +3353,7 @@ void PAR0(){
                     }else{
                         error=1;
                         avanzarToken();
-                        printf("se esperaba un numero positivo despues de \"::\".\n");
+                        printf("se esperaba una cadena despues de \"::\".\n");
                         break;
                     }
                     PAR();
@@ -2171,12 +3448,12 @@ void PAR1(){
 void PAR2(){
     if(tokActual!=NULL){
         switch (tokenActual) {
-            case 6:{
+            case 6:{//+
                 avanzarToken();
                 PAR3();
             break;
             }
-            case 7:{
+            case 7:{//-
                 avanzarToken();
                 PAR4();
             break;
@@ -2423,7 +3700,7 @@ void PAR4(){
                     }else{
                         error=1;
                         avanzarToken();
-                        printf("se esperaba un numero positivo despues de \"::\".\n");
+                        printf("se esperaba una cadena despues de \"::\".\n");
                         break;
                     }
                     PAR2();
@@ -2472,4 +3749,91 @@ void PAR4(){
     }
 }
 
+void PAR5(){
+    if(tokActual!=NULL){
+        switch (tokenActual) {
+            case 7:{
+                avanzarToken();
+                PAR6();
+            break;
+            }
+            default:{
+                printf("Los parametros deben iniciar con \"+\" o \"-\".\n");
+                error=1;
+                //podria hacer un ciclo que me llegue a un punto de recuperacion de errores pero por el momenot vamos a asumir que no se ejecutara nada si no esta sintacticamente bien;
+            break;
+            }
+        }
+    }
+}
 
+void PAR6(){
+    if(tokActual!=NULL){
+        switch (tokenActual) {
+            case 12:{
+                if(Bpath<1){
+                    Bpath=1;
+                    avanzarToken();
+                    if(tokenActual==5){ // token = ::
+                        avanzarToken();
+                    }else{
+                        error=1;
+                        avanzarToken();
+                        printf("se esperaba :: despues de path.\n");
+                        break;
+                    }
+                    if(tokenActual==4){
+                        //si todo va bien aca guardaria el tamano size en una global
+                        strcpy(path,tokActual->lexema); // global
+                        avanzarToken();
+                    }else{
+                        error=1;
+                        avanzarToken();
+                        printf("se esperaba una cadena despues de \"::\".\n");
+                        break;
+                    }
+                    PAR5();
+                }else{// aca notifico error cuando path viene mas de una vez
+                    printf("El parametro phat no se puede repetir.\n");
+                    error=1;
+                }
+            break;
+            }
+            case 13:{ //name
+                if(Bname<1){
+                    Bname=1;
+                    avanzarToken();
+                    if(tokenActual==5){ // token = ::
+                        avanzarToken();
+                    }else{
+                        error=1;
+                        avanzarToken();
+                        printf("se esperaba :: despues de path.\n");
+                        break;
+                    }
+                    if(tokenActual==4){
+                        //si todo va bien aca guardaria el tamano size en una global
+                        strcpy(name,tokActual->lexema); // global
+                        avanzarToken();
+                    }else{
+                        error=1;
+                        avanzarToken();
+                        printf("Se esperaba una cadena despues de \"::\".\n");
+                        break;
+                    }
+                    PAR();
+                }else{
+                    printf("El parametro name no se puede repetir.\n");
+                    error=1;
+                }
+            break;
+            }
+            default:{
+                printf("El paramentro despues de \"-\" no es correcto.\n");
+                error=1;
+            break;
+            }
+
+        }
+    }
+}
